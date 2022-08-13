@@ -1,5 +1,6 @@
 mod handlers;
 mod schema;
+mod trace_layer;
 
 use crate::{app::App, config::Config};
 use axum::{routing::get, Extension, Router};
@@ -8,6 +9,7 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
+use tower_http::trace::TraceLayer;
 use tracing::info;
 
 pub async fn run(config: Config, app: App<'static>) {
@@ -24,7 +26,12 @@ pub async fn run(config: Config, app: App<'static>) {
         //     get(handlers::get_user_logs),
         // )
         .layer(Extension(app))
-        .layer(Extension(Arc::new(config)));
+        .layer(Extension(Arc::new(config)))
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(trace_layer::make_span_with)
+                .on_response(trace_layer::on_response),
+        );
 
     info!("Listening on {listen_address}");
 

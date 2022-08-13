@@ -1,7 +1,7 @@
 use super::schema::{
     Channel, ChannelIdType, ChannelLogsParams, ChannelsList, UserIdType, UserLogsParams,
 };
-use crate::{app::App, config::Config, error::Error};
+use crate::{app::App, config::Config, error::Error, logs::schema::ChannelLogDate};
 use axum::{extract::Path, Extension, Json};
 use std::sync::Arc;
 
@@ -24,16 +24,12 @@ pub async fn get_channels(
 
 pub async fn get_channel_logs(
     app: Extension<App<'_>>,
-    Path(ChannelLogsParams {
-        channel_id_type,
-        channel,
-        channel_log_date,
-    }): Path<ChannelLogsParams>,
+    Path(channel_log_params): Path<ChannelLogsParams>,
 ) -> Result<String, Error> {
-    let channel_id = match channel_id_type {
+    let channel_id = match channel_log_params.channel_id_type {
         ChannelIdType::Name => {
             let (id, _) = app
-                .get_users(vec![], vec![channel])
+                .get_users(vec![], vec![channel_log_params.channel.clone()])
                 .await?
                 .into_iter()
                 .next()
@@ -41,12 +37,14 @@ pub async fn get_channel_logs(
             id
         }
 
-        ChannelIdType::Id => channel,
+        ChannelIdType::Id => channel_log_params.channel.clone(),
     };
+
+    let log_date = ChannelLogDate::try_from(&channel_log_params)?;
 
     Ok(app
         .logs
-        .read_channel(&channel_id, channel_log_date)
+        .read_channel(&channel_id, log_date)
         .await?
         .join("\n"))
 }

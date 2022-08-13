@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-
 use crate::logs::schema::ChannelLogDate;
+use serde::{Deserialize, Serialize};
+use std::num::ParseIntError;
 
 #[derive(Serialize)]
 pub struct ChannelsList {
@@ -44,6 +44,19 @@ pub struct UserLogsParams {
 pub struct ChannelLogsParams {
     pub channel_id_type: ChannelIdType,
     pub channel: String,
-    #[serde(flatten)]
-    pub channel_log_date: ChannelLogDate,
+    pub year: String,
+    pub month: String,
+    pub day: String,
+}
+
+impl TryFrom<&ChannelLogsParams> for ChannelLogDate {
+    type Error = ParseIntError;
+
+    fn try_from(params: &ChannelLogsParams) -> Result<Self, Self::Error> {
+        Ok(Self {
+            year: params.year.parse()?,
+            month: params.month.parse()?,
+            day: params.day.parse()?,
+        })
+    }
 }
