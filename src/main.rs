@@ -17,7 +17,7 @@ use logs::{offsets::Offset, Logs};
 use std::{path::PathBuf, sync::Arc};
 use tokio::{fs::File, io::BufReader, try_join};
 use tracing::info;
-use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};
+use tracing_subscriber::EnvFilter;
 use twitch_api2::{
     twitch_oauth2::{AppAccessToken, Scope},
     HelixClient,
@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
-        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+        // .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
         .init();
 
     let config = Config::load().await?;
