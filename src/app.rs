@@ -1,4 +1,4 @@
-use crate::{error::Error, logs::Logs};
+use crate::{error::Error, logs::Logs, Result};
 use dashmap::DashMap;
 use std::{collections::HashMap, sync::Arc};
 use tracing::debug;
@@ -17,7 +17,7 @@ impl App<'_> {
         &self,
         ids: Vec<String>,
         names: Vec<String>,
-    ) -> Result<HashMap<String, String>, Error> {
+    ) -> Result<HashMap<String, String>> {
         let mut users = HashMap::new();
         let mut ids_to_request = Vec::new();
         let mut names_to_request = Vec::new();
@@ -67,5 +67,15 @@ impl App<'_> {
         }
 
         Ok(users)
+    }
+
+    pub async fn user_id_from_name(&self, name: String) -> Result<String> {
+        Ok(self
+            .get_users(vec![], vec![name])
+            .await?
+            .into_iter()
+            .next()
+            .ok_or_else(|| Error::NotFound)?
+            .0)
     }
 }
