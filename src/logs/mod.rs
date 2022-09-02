@@ -9,7 +9,7 @@ use itertools::Itertools;
 use std::{collections::HashMap, io::SeekFrom, path::PathBuf, sync::Arc};
 use tokio::{
     fs::{self, read_dir, File, OpenOptions},
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter},
 };
 use tracing::{error, trace};
 use twitch_irc::message::{AsRawIRC, ClearChatAction, IRCMessage, ServerMessage};
@@ -180,12 +180,14 @@ impl Logs {
         );
         trace!("Reading logs from {channel_file_path:?}");
 
-        let file = File::open(channel_file_path).await?;
-        let mut lines = BufReader::new(file).lines();
+        let mut file = File::open(channel_file_path).await?;
+        let file_len = file.metadata().await?.len();
 
+        let mut contents = String::with_capacity(file_len.try_into().unwrap());
         let mut results = Vec::new();
+        file.read_to_string(&mut contents).await?;
 
-        while let Some(line) = lines.next_line().await? {
+        for line in contents.lines() {
             match IRCMessage::parse(&line)
                 .map_err(|err| err.to_string())
                 .and_then(|irc_msg| ServerMessage::try_from(irc_msg).map_err(|err| err.to_string()))
