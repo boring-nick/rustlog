@@ -22,19 +22,10 @@ pub enum ChannelIdType {
     Id,
 }
 
-#[derive(Debug, Deserialize)]
-pub enum UserIdType {
-    #[serde(rename = "user")]
-    Name,
-    #[serde(rename = "userid")]
-    Id,
-}
-
 #[derive(Deserialize)]
 pub struct UserLogsParams {
     pub channel_id_type: ChannelIdType,
     pub channel: String,
-    pub user_id_type: UserIdType,
     pub user: String,
     pub year: String,
     pub month: String,

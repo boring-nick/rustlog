@@ -13,9 +13,12 @@ use app::App;
 use clap::{Parser, Subcommand};
 use config::Config;
 use dashmap::DashMap;
-use logs::{offsets::Offset, Logs};
+use logs::{
+    index::{self, Index},
+    Logs,
+};
 use std::{path::PathBuf, sync::Arc};
-use tokio::{fs::File, io::BufReader, try_join};
+use tokio::{fs::File, io::AsyncReadExt, try_join};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 use twitch_api2::{
@@ -90,11 +93,13 @@ async fn reindex(config: Config, logs: Logs, mut channels: Vec<String>) -> anyho
 }
 
 async fn print_index(file_path: PathBuf) -> anyhow::Result<()> {
-    let file = File::open(&file_path).await?;
-    let mut reader = BufReader::new(file);
+    let mut file = File::open(&file_path).await?;
+    let mut buf = Vec::new();
+    file.read_to_end(&mut buf).await?;
 
-    while let Some(offset) = Offset::read_one(&mut reader).await? {
-        info!("Offset: {offset:?}");
+    for bytes in buf.chunks_exact(index::SIZE) {
+        let index = Index::from_bytes(bytes)?;
+        info!("Index: {index:?}");
     }
 
     Ok(())

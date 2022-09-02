@@ -21,10 +21,15 @@ pub async fn run(config: Config, app: App<'static>) {
             "/:channel_id_type/:channel/:year/:month/:day",
             get(handlers::get_channel_logs),
         )
-        // .route(
-        //     "/:channel_id_type/:channel/:user_id_type/:user/:year/:month",
-        //     get(handlers::get_user_logs),
-        // )
+        // For some reason axum considers it a path overlap if user id type is dynamic
+        .route(
+            "/:channel_id_type/:channel/user/:user/:year/:month",
+            get(handlers::get_user_logs_by_name),
+        )
+        .route(
+            "/:channel_id_type/:channel/userid/:user/:year/:month",
+            get(handlers::get_user_logs_by_id),
+        )
         .layer(Extension(app))
         .layer(Extension(Arc::new(config)))
         .layer(

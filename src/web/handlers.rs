@@ -1,7 +1,5 @@
-use super::schema::{
-    Channel, ChannelIdType, ChannelLogsParams, ChannelsList, UserIdType, UserLogsParams,
-};
-use crate::{app::App, config::Config, error::Error, logs::schema::ChannelLogDate};
+use super::schema::{Channel, ChannelIdType, ChannelLogsParams, ChannelsList, UserLogsParams};
+use crate::{app::App, config::Config, error::Error, logs::schema::ChannelLogDate, Result};
 use axum::{extract::Path, Extension, Json};
 use std::sync::Arc;
 
@@ -25,7 +23,7 @@ pub async fn get_channels(
 pub async fn get_channel_logs(
     app: Extension<App<'_>>,
     Path(channel_log_params): Path<ChannelLogsParams>,
-) -> Result<String, Error> {
+) -> Result<String> {
     let channel_id = match channel_log_params.channel_id_type {
         ChannelIdType::Name => {
             let (id, _) = app
@@ -49,17 +47,40 @@ pub async fn get_channel_logs(
         .join("\n"))
 }
 
-pub async fn get_user_logs(
+pub async fn get_user_logs_by_name(
+    app: Extension<App<'_>>,
+    path: Path<UserLogsParams>,
+) -> Result<String> {
+    let user_id = app
+        .get_users(vec![], vec![path.user.clone()])
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| Error::NotFound)?
+        .0;
+
+    get_user_logs(app, path, user_id).await
+}
+
+pub async fn get_user_logs_by_id(
+    app: Extension<App<'_>>,
+    path: Path<UserLogsParams>,
+) -> Result<String> {
+    let user_id = path.user.clone();
+    get_user_logs(app, path, user_id).await
+}
+
+async fn get_user_logs(
     app: Extension<App<'_>>,
     Path(UserLogsParams {
         channel_id_type,
         channel,
-        user_id_type,
-        user,
+        user: _,
         year,
         month,
     }): Path<UserLogsParams>,
-) -> Result<String, Error> {
+    user_id: String,
+) -> Result<String> {
     let channel_id = match channel_id_type {
         ChannelIdType::Name => {
             let (id, _) = app
@@ -72,20 +93,6 @@ pub async fn get_user_logs(
         }
 
         ChannelIdType::Id => channel,
-    };
-
-    let user_id = match user_id_type {
-        UserIdType::Name => {
-            let (id, _) = app
-                .get_users(vec![], vec![user])
-                .await?
-                .into_iter()
-                .next()
-                .ok_or_else(|| Error::NotFound)?;
-            id
-        }
-
-        UserIdType::Id => user,
     };
 
     Ok(app
