@@ -1,7 +1,24 @@
-use super::schema::{Channel, ChannelIdType, ChannelLogsParams, ChannelsList, UserLogsParams};
-use crate::{app::App, config::Config, error::Error, logs::schema::ChannelLogDate, Result};
-use axum::{extract::Path, Extension, Json};
+use super::{
+    responders::logs::{LogsResponse, Message},
+    schema::{
+        AvailableLogDate, AvailableLogs, AvailableLogsParams, Channel, ChannelIdType,
+        ChannelIdentifier, ChannelLogsPath, ChannelsList, LogsParams, UserIdentifier, UserLogsPath,
+    },
+};
+use crate::{
+    app::App,
+    config::Config,
+    error::Error,
+    logs::{format_message_from_raw, schema::ChannelLogDate},
+    Result,
+};
+use axum::{
+    extract::{Path, Query},
+    Extension, Json,
+};
+use itertools::Itertools;
 use std::sync::Arc;
+use tracing::error;
 
 pub async fn get_channels(
     app: Extension<App<'_>>,
@@ -22,8 +39,9 @@ pub async fn get_channels(
 
 pub async fn get_channel_logs(
     app: Extension<App<'_>>,
-    Path(channel_log_params): Path<ChannelLogsParams>,
-) -> Result<String> {
+    Path(channel_log_params): Path<ChannelLogsPath>,
+    Query(LogsParams { json }): Query<LogsParams>,
+) -> Result<LogsResponse> {
     let channel_id = match channel_log_params.channel_id_type {
         ChannelIdType::Name => {
             let (id, _) = app
@@ -40,17 +58,35 @@ pub async fn get_channel_logs(
 
     let log_date = ChannelLogDate::try_from(&channel_log_params)?;
 
-    Ok(app
-        .logs
-        .read_channel(&channel_id, log_date)
-        .await?
-        .join("\n"))
+    let lines = app.logs.read_channel(&channel_id, log_date).await?;
+
+    if json == "true" || json == "1" {
+        match lines
+            .into_iter()
+            .map(|line| Message::parse_from_raw_irc(line))
+            .try_collect()
+        {
+            Ok(messages) => Ok(LogsResponse::Json(messages)),
+            Err(err) => {
+                error!("Could not parse messages: {err}");
+                Err(Error::Internal)
+            }
+        }
+    } else {
+        let messages = lines
+            .into_iter()
+            .map(|line| format_message_from_raw(&line))
+            .try_collect()?;
+
+        Ok(LogsResponse::Plain(messages))
+    }
 }
 
 pub async fn get_user_logs_by_name(
     app: Extension<App<'_>>,
-    path: Path<UserLogsParams>,
-) -> Result<String> {
+    path: Path<UserLogsPath>,
+    params: Query<LogsParams>,
+) -> Result<LogsResponse> {
     let user_id = app
         .get_users(vec![], vec![path.user.clone()])
         .await?
@@ -59,28 +95,30 @@ pub async fn get_user_logs_by_name(
         .ok_or_else(|| Error::NotFound)?
         .0;
 
-    get_user_logs(app, path, user_id).await
+    get_user_logs(app, path, params, user_id).await
 }
 
 pub async fn get_user_logs_by_id(
     app: Extension<App<'_>>,
-    path: Path<UserLogsParams>,
-) -> Result<String> {
+    path: Path<UserLogsPath>,
+    params: Query<LogsParams>,
+) -> Result<LogsResponse> {
     let user_id = path.user.clone();
-    get_user_logs(app, path, user_id).await
+    get_user_logs(app, path, params, user_id).await
 }
 
 async fn get_user_logs(
     app: Extension<App<'_>>,
-    Path(UserLogsParams {
+    Path(UserLogsPath {
         channel_id_type,
         channel,
         user: _,
         year,
         month,
-    }): Path<UserLogsParams>,
+    }): Path<UserLogsPath>,
+    Query(LogsParams { json }): Query<LogsParams>,
     user_id: String,
-) -> Result<String> {
+) -> Result<LogsResponse> {
     let channel_id = match channel_id_type {
         ChannelIdType::Name => {
             let (id, _) = app
@@ -95,8 +133,62 @@ async fn get_user_logs(
         ChannelIdType::Id => channel,
     };
 
-    Ok(app
+    let lines = app
         .logs
         .read_user(&channel_id, &user_id, &year, &month)
-        .await?)
+        .await?;
+
+    if json == "true" || json == "1" {
+        match lines
+            .into_iter()
+            .map(|line| Message::parse_from_raw_irc(line))
+            .try_collect()
+        {
+            Ok(messages) => Ok(LogsResponse::Json(messages)),
+            Err(err) => {
+                error!("Could not parse messages: {err}");
+                Err(Error::Internal)
+            }
+        }
+    } else {
+        let messages = lines
+            .into_iter()
+            .map(|line| format_message_from_raw(&line))
+            .try_collect()?;
+
+        Ok(LogsResponse::Plain(messages))
+    }
+}
+
+pub async fn list_available_user_logs(
+    app: Extension<App<'_>>,
+    Query(AvailableLogsParams { user, channel }): Query<AvailableLogsParams>,
+) -> Result<Json<AvailableLogs>> {
+    let user_id = match user {
+        UserIdentifier::UserId(id) => id,
+        UserIdentifier::User(name) => app.user_id_from_name(name).await?,
+    };
+    let channel_id = match channel {
+        ChannelIdentifier::ChannelId(id) => id,
+        ChannelIdentifier::Channel(name) => app.user_id_from_name(name).await?,
+    };
+
+    let available_logs = app
+        .logs
+        .get_available_user_logs(&channel_id, &user_id)
+        .await?;
+
+    let mut results = Vec::new();
+
+    for (year, months) in available_logs {
+        let available_dates = months.into_iter().map(|month| AvailableLogDate {
+            year: year.clone(),
+            month,
+        });
+        results.extend(available_dates);
+    }
+
+    Ok(Json(AvailableLogs {
+        available_logs: results,
+    }))
 }

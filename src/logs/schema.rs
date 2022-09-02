@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt::Display};
 
 pub type ChannelLogDateMap = HashMap<u32, HashMap<u32, Vec<u32>>>;
+pub type UserLogDateMap = HashMap<String, Vec<String>>;
 
 #[derive(Serialize, Deserialize)]
 pub struct ChannelLogDate {

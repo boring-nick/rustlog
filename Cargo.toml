@@ -6,7 +6,8 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.58"
 axum = "0.5.7"
-chrono = "0.4.19"
+axum-extra = { version = "0.3.7", features = ["spa"] }
+chrono = { version = "0.4.19", features = ["serde"] }
 clap = { version = "3.2.16", features = ["derive"] }
 crossbeam-channel = "0.5.5"
 dashmap = "5.3.4"
@@ -16,7 +17,7 @@ serde = { version = "1.0.137", features = ["derive"] }
 serde_json = { version = "1.0.81", features = ["preserve_order"] }
 thiserror = "1.0.31"
 tokio = { version = "1.19.2", features = ["full"] }
-tower-http = { version = "0.3.4", features = ["trace"] }
+tower-http = { version = "0.3.4", features = ["trace", "cors"] }
 tracing = "0.1.35"
 tracing-subscriber = { version = "0.3.11", features = ["env-filter"] }
 twitch-irc = "4.0.0"

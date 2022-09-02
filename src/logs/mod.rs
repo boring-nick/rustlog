@@ -2,8 +2,9 @@
 pub mod index;
 pub mod schema;
 
-use self::schema::{ChannelLogDate, ChannelLogDateMap};
+use self::schema::{ChannelLogDate, ChannelLogDateMap, UserLogDateMap};
 use crate::{error::Error, logs::index::Index, Result};
+use anyhow::Context;
 use chrono::{Date, Datelike, Timelike, Utc};
 use itertools::Itertools;
 use std::{collections::HashMap, io::SeekFrom, path::PathBuf, sync::Arc};
@@ -11,7 +12,7 @@ use tokio::{
     fs::{self, read_dir, File, OpenOptions},
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter},
 };
-use tracing::{error, trace};
+use tracing::trace;
 use twitch_irc::message::{AsRawIRC, ClearChatAction, IRCMessage, ServerMessage};
 
 #[derive(Debug, Clone)]
@@ -166,6 +167,47 @@ impl Logs {
         Ok(years)
     }
 
+    pub async fn get_available_user_logs(
+        &self,
+        channel_id: &str,
+        user_id: &str,
+    ) -> Result<UserLogDateMap> {
+        let user_index_name = format!("{user_id}.indexes");
+
+        let channel_path = self.root_path.join(channel_id);
+        let mut channel_dir = read_dir(channel_path).await?;
+
+        let mut years = HashMap::new();
+
+        while let Some(year_entry) = channel_dir.next_entry().await? {
+            if year_entry.metadata().await?.is_dir() {
+                let mut year_dir = read_dir(year_entry.path()).await?;
+                let mut months = Vec::new();
+
+                while let Some(month_entry) = year_dir.next_entry().await? {
+                    let user_index_path = month_entry.path().join("users").join(&user_index_name);
+                    if fs::metadata(user_index_path).await.is_ok() {
+                        let month = month_entry
+                            .file_name()
+                            .to_str()
+                            .expect("invalid month name")
+                            .to_owned();
+                        months.push(month);
+                    }
+                }
+
+                let year = year_entry
+                    .file_name()
+                    .to_str()
+                    .expect("invalid year")
+                    .to_owned();
+                years.insert(year, months);
+            }
+        }
+
+        Ok(years)
+    }
+
     pub async fn read_channel(
         &self,
         channel_id: &str,
@@ -184,24 +226,9 @@ impl Logs {
         let file_len = file.metadata().await?.len();
 
         let mut contents = String::with_capacity(file_len.try_into().unwrap());
-        let mut results = Vec::new();
         file.read_to_string(&mut contents).await?;
 
-        for line in contents.lines() {
-            match IRCMessage::parse(&line)
-                .map_err(|err| err.to_string())
-                .and_then(|irc_msg| ServerMessage::try_from(irc_msg).map_err(|err| err.to_string()))
-            {
-                Ok(msg) => {
-                    if let Some(formatted) = format_message(&msg) {
-                        results.push(formatted);
-                    }
-                }
-                Err(err) => error!("Malformed message {line}: {err}"),
-            }
-        }
-
-        Ok(results)
+        Ok(contents.lines().map(str::to_owned).collect())
     }
 
     pub async fn read_user(
@@ -210,7 +237,7 @@ impl Logs {
         user_id: &str,
         year: &str,
         month: &str,
-    ) -> Result<String> {
+    ) -> Result<Vec<String>> {
         let index_path = get_user_index_path(&self.root_path, channel_id, user_id, year, month);
         trace!("Reading user index from {index_path:?}");
 
@@ -256,21 +283,18 @@ impl Logs {
             let mut buf = String::with_capacity(index.len as usize);
             handle.read_to_string(&mut buf).await?;
 
-            match IRCMessage::parse(buf.trim())
-                .map_err(|err| err.to_string())
-                .and_then(|irc_msg| ServerMessage::try_from(irc_msg).map_err(|err| err.to_string()))
-            {
-                Ok(msg) => {
-                    if let Some(formatted) = format_message(&msg) {
-                        lines.push(formatted);
-                    }
-                }
-                Err(err) => error!("Malformed message {buf}: {err}"),
-            }
+            lines.push(buf);
         }
 
-        Ok(lines.join("\n"))
+        Ok(lines)
     }
+}
+
+pub fn format_message_from_raw(raw: &str) -> anyhow::Result<String> {
+    let irc_message = IRCMessage::parse(raw)?;
+    let server_message = ServerMessage::try_from(irc_message)?;
+
+    format_message(&server_message).context("Could not format given message type")
 }
 
 fn format_message(msg: &ServerMessage) -> Option<String> {
