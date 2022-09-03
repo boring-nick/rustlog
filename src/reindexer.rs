@@ -1,5 +1,3 @@
-use std::collections::{hash_map::Entry, HashMap};
-
 use crate::{
     app::App,
     logs::{
@@ -9,6 +7,10 @@ use crate::{
 };
 use anyhow::Context;
 use futures::future::try_join_all;
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    time::Instant,
+};
 use tokio::{
     fs::{self, File, OpenOptions},
     io::{AsyncBufReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter},
@@ -17,6 +19,8 @@ use tracing::{debug, error, info, trace, warn};
 use twitch_irc::message::{IRCMessage, ServerMessage};
 
 pub async fn run(app: App<'_>, channels: &[String]) -> anyhow::Result<()> {
+    let started_at = Instant::now();
+
     for channel_id in channels {
         match app.logs.get_available_channel_logs(channel_id).await {
             Ok(available_logs) => {
@@ -150,7 +154,8 @@ pub async fn run(app: App<'_>, channels: &[String]) -> anyhow::Result<()> {
         }
     }
 
-    info!("Reindex finished");
+    let elapsed = started_at.elapsed();
+    info!("Reindex finished in {elapsed:?}");
 
     Ok(())
 }
