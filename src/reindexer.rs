@@ -1,4 +1,10 @@
-use crate::logs::{extract_channel_and_user, get_channel_path, get_users_path, index::Index, Logs};
+use crate::{
+    app::App,
+    logs::{
+        extract_channel_and_user, get_channel_path, get_users_path, index::Index,
+        schema::UserIdentifier,
+    },
+};
 use anyhow::Context;
 use tokio::{
     fs::{self, File},
@@ -7,14 +13,14 @@ use tokio::{
 use tracing::{debug, error, info, warn};
 use twitch_irc::message::{IRCMessage, ServerMessage};
 
-pub async fn run(logs: Logs, channels: &[String]) -> anyhow::Result<()> {
+pub async fn run(app: App<'_>, channels: &[String]) -> anyhow::Result<()> {
     for channel_id in channels {
-        match logs.get_available_channel_logs(channel_id).await {
+        match app.logs.get_available_channel_logs(channel_id).await {
             Ok(available_logs) => {
                 for (year, months) in available_logs {
                     for (month, days) in months {
                         let users_path = get_users_path(
-                            &logs.root_path,
+                            &app.logs.root_path,
                             channel_id,
                             &year.to_string(),
                             &month.to_string(),
@@ -31,7 +37,7 @@ pub async fn run(logs: Logs, channels: &[String]) -> anyhow::Result<()> {
                             info!("Reindexing channel {channel_id} date {year}-{month}-{day}");
 
                             let channel_file_path = get_channel_path(
-                                &logs.root_path,
+                                &app.logs.root_path,
                                 channel_id,
                                 &year.to_string(),
                                 &month.to_string(),
@@ -60,9 +66,16 @@ pub async fn run(logs: Logs, channels: &[String]) -> anyhow::Result<()> {
                                             .map_err(|err| err.to_string())
                                     }) {
                                     Ok(server_msg) => {
-                                        if let Some((_, user_id)) =
+                                        if let Some((_, Some(user))) =
                                             extract_channel_and_user(&server_msg)
                                         {
+                                            let user_id = match user {
+                                                UserIdentifier::UserId(id) => id.to_owned(),
+                                                UserIdentifier::User(name) => {
+                                                    app.get_user_id_by_name(&name).await?
+                                                }
+                                            };
+
                                             let index = Index {
                                                 day,
                                                 offset,
@@ -71,15 +84,16 @@ pub async fn run(logs: Logs, channels: &[String]) -> anyhow::Result<()> {
 
                                             debug!("Writing index {index:?} for {user_id}");
 
-                                            logs.write_user_log(
-                                                channel_id,
-                                                user_id,
-                                                &year.to_string(),
-                                                &month.to_string(),
-                                                index,
-                                            )
-                                            .await
-                                            .context("could not write user log")?;
+                                            app.logs
+                                                .write_user_log(
+                                                    channel_id,
+                                                    &user_id,
+                                                    &year.to_string(),
+                                                    &month.to_string(),
+                                                    index,
+                                                )
+                                                .await
+                                                .context("could not write user log")?;
                                         } else {
                                             warn!("Unexpected log entry {line}, ignoring");
                                         }

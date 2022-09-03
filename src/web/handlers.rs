@@ -1,15 +1,15 @@
 use super::{
-    responders::logs::{LogsResponse, Message},
+    responders::logs::{LogsResponse, LogsResponseType, ProcessedLogs, ProcessedLogsType},
     schema::{
         AvailableLogDate, AvailableLogs, AvailableLogsParams, Channel, ChannelIdType,
-        ChannelIdentifier, ChannelLogsPath, ChannelsList, LogsParams, UserIdentifier, UserLogsPath,
+        ChannelLogsPath, ChannelParam, ChannelsList, LogsParams, UserLogsPath, UserParam,
     },
 };
 use crate::{
     app::App,
     config::Config,
     error::Error,
-    logs::{format_message_from_raw, schema::ChannelLogDate},
+    logs::schema::{ChannelLogDate, Message},
     Result,
 };
 use axum::{
@@ -18,7 +18,6 @@ use axum::{
 };
 use itertools::Itertools;
 use std::sync::Arc;
-use tracing::error;
 
 pub async fn get_channels(
     app: Extension<App<'_>>,
@@ -40,7 +39,7 @@ pub async fn get_channels(
 pub async fn get_channel_logs(
     app: Extension<App<'_>>,
     Path(channel_log_params): Path<ChannelLogsPath>,
-    Query(LogsParams { json }): Query<LogsParams>,
+    Query(logs_params): Query<LogsParams>,
 ) -> Result<LogsResponse> {
     let channel_id = match channel_log_params.channel_id_type {
         ChannelIdType::Name => {
@@ -60,26 +59,30 @@ pub async fn get_channel_logs(
 
     let lines = app.logs.read_channel(&channel_id, log_date).await?;
 
-    if json == "true" || json == "1" {
-        match lines
-            .into_iter()
-            .map(|line| Message::parse_from_raw_irc(line))
-            .try_collect()
-        {
-            Ok(messages) => Ok(LogsResponse::Json(messages)),
-            Err(err) => {
-                error!("Could not parse messages: {err}");
-                Err(Error::Internal)
-            }
-        }
+    let response_type = if logs_params.is_raw()? {
+        LogsResponseType::Raw(lines)
     } else {
         let messages = lines
             .into_iter()
-            .map(|line| format_message_from_raw(&line))
+            .map(|line| Message::parse_from_raw_irc(line))
             .try_collect()?;
 
-        Ok(LogsResponse::Plain(messages))
-    }
+        let logs_type = if logs_params.is_json()? {
+            ProcessedLogsType::Json
+        } else {
+            ProcessedLogsType::Text
+        };
+
+        LogsResponseType::Processed(ProcessedLogs {
+            messages,
+            logs_type,
+        })
+    };
+
+    Ok(LogsResponse {
+        response_type,
+        reverse: logs_params.is_reverse()?,
+    })
 }
 
 pub async fn get_user_logs_by_name(
@@ -116,7 +119,7 @@ async fn get_user_logs(
         year,
         month,
     }): Path<UserLogsPath>,
-    Query(LogsParams { json }): Query<LogsParams>,
+    Query(logs_params): Query<LogsParams>,
     user_id: String,
 ) -> Result<LogsResponse> {
     let channel_id = match channel_id_type {
@@ -138,26 +141,30 @@ async fn get_user_logs(
         .read_user(&channel_id, &user_id, &year, &month)
         .await?;
 
-    if json == "true" || json == "1" {
-        match lines
-            .into_iter()
-            .map(|line| Message::parse_from_raw_irc(line))
-            .try_collect()
-        {
-            Ok(messages) => Ok(LogsResponse::Json(messages)),
-            Err(err) => {
-                error!("Could not parse messages: {err}");
-                Err(Error::Internal)
-            }
-        }
+    let response_type = if logs_params.is_raw()? {
+        LogsResponseType::Raw(lines)
     } else {
         let messages = lines
             .into_iter()
-            .map(|line| format_message_from_raw(&line))
+            .map(|line| Message::parse_from_raw_irc(line))
             .try_collect()?;
 
-        Ok(LogsResponse::Plain(messages))
-    }
+        let logs_type = if logs_params.is_json()? {
+            ProcessedLogsType::Json
+        } else {
+            ProcessedLogsType::Text
+        };
+
+        LogsResponseType::Processed(ProcessedLogs {
+            messages,
+            logs_type,
+        })
+    };
+
+    Ok(LogsResponse {
+        response_type,
+        reverse: logs_params.is_reverse()?,
+    })
 }
 
 pub async fn list_available_user_logs(
@@ -165,12 +172,12 @@ pub async fn list_available_user_logs(
     Query(AvailableLogsParams { user, channel }): Query<AvailableLogsParams>,
 ) -> Result<Json<AvailableLogs>> {
     let user_id = match user {
-        UserIdentifier::UserId(id) => id,
-        UserIdentifier::User(name) => app.user_id_from_name(name).await?,
+        UserParam::UserId(id) => id,
+        UserParam::User(name) => app.get_user_id_by_name(&name).await?,
     };
     let channel_id = match channel {
-        ChannelIdentifier::ChannelId(id) => id,
-        ChannelIdentifier::Channel(name) => app.user_id_from_name(name).await?,
+        ChannelParam::ChannelId(id) => id,
+        ChannelParam::Channel(name) => app.get_user_id_by_name(&name).await?,
     };
 
     let available_logs = app

@@ -10,8 +10,6 @@ pub fn make_span_with(request: &Request<Body>) -> Span {
     let method = request.method().to_string();
     let url = request.uri().to_string();
 
-    info!("HTTP request {method} at {url}");
-
     info_span!(
         "http-request",
         "http.method" = method.as_str(),
