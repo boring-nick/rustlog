@@ -1142,6 +1142,7 @@ dependencies = [
  "clap",
  "crossbeam-channel",
  "dashmap",
+ "futures",
  "itertools",
  "pretty_assertions",
  "reqwest",
