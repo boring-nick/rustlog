@@ -16,8 +16,8 @@ use axum::{
     extract::{Path, Query},
     Extension, Json,
 };
-use itertools::Itertools;
 use std::sync::Arc;
+use tracing::debug;
 
 pub async fn get_channels(
     app: Extension<App<'_>>,
@@ -41,6 +41,8 @@ pub async fn get_channel_logs(
     Path(channel_log_params): Path<ChannelLogsPath>,
     Query(logs_params): Query<LogsParams>,
 ) -> Result<LogsResponse> {
+    debug!("Params: {logs_params:?}");
+
     let channel_id = match channel_log_params.channel_id_type {
         ChannelIdType::Name => {
             let (id, _) = app
@@ -59,15 +61,15 @@ pub async fn get_channel_logs(
 
     let lines = app.logs.read_channel(&channel_id, log_date).await?;
 
-    let response_type = if logs_params.is_raw()? {
+    let response_type = if logs_params.raw {
         LogsResponseType::Raw(lines)
     } else {
         let messages = lines
             .into_iter()
-            .map(|line| Message::parse_from_raw_irc(line))
-            .try_collect()?;
+            .filter_map(|line| Message::parse_from_raw_irc(line).ok())
+            .collect();
 
-        let logs_type = if logs_params.is_json()? {
+        let logs_type = if logs_params.json {
             ProcessedLogsType::Json
         } else {
             ProcessedLogsType::Text
@@ -81,7 +83,7 @@ pub async fn get_channel_logs(
 
     Ok(LogsResponse {
         response_type,
-        reverse: logs_params.is_reverse()?,
+        reverse: logs_params.reverse,
     })
 }
 
@@ -141,15 +143,15 @@ async fn get_user_logs(
         .read_user(&channel_id, &user_id, &year, &month)
         .await?;
 
-    let response_type = if logs_params.is_raw()? {
+    let response_type = if logs_params.raw {
         LogsResponseType::Raw(lines)
     } else {
         let messages = lines
             .into_iter()
-            .map(|line| Message::parse_from_raw_irc(line))
-            .try_collect()?;
+            .filter_map(|line| Message::parse_from_raw_irc(line).ok())
+            .collect();
 
-        let logs_type = if logs_params.is_json()? {
+        let logs_type = if logs_params.json {
             ProcessedLogsType::Json
         } else {
             ProcessedLogsType::Text
@@ -163,7 +165,7 @@ async fn get_user_logs(
 
     Ok(LogsResponse {
         response_type,
-        reverse: logs_params.is_reverse()?,
+        reverse: logs_params.reverse,
     })
 }
 

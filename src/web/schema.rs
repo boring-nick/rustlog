@@ -1,5 +1,5 @@
-use crate::{error::Error, logs::schema::ChannelLogDate};
-use serde::{Deserialize, Serialize};
+use crate::logs::schema::ChannelLogDate;
+use serde::{Deserialize, Deserializer, Serialize};
 use std::num::ParseIntError;
 
 #[derive(Serialize)]
@@ -40,43 +40,24 @@ pub struct ChannelLogsPath {
     pub day: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct LogsParams {
-    #[serde(default = "default_log_param")]
-    pub json: String,
-    #[serde(default = "default_log_param")]
-    pub raw: String,
-    #[serde(default = "default_log_param")]
-    pub reverse: String,
+    #[serde(default, deserialize_with = "deserialize_bool_param")]
+    pub json: bool,
+    #[serde(default, deserialize_with = "deserialize_bool_param")]
+    pub raw: bool,
+    #[serde(default, deserialize_with = "deserialize_bool_param")]
+    pub reverse: bool,
 }
 
-impl LogsParams {
-    pub fn is_json(&self) -> Result<bool, Error> {
-        parse_bool(&self.json)
-    }
-
-    pub fn is_raw(&self) -> Result<bool, Error> {
-        parse_bool(&self.raw)
-    }
-
-    pub fn is_reverse(&self) -> Result<bool, Error> {
-        parse_bool(&self.reverse)
-    }
-}
-
-fn default_log_param() -> String {
-    "0".to_owned()
-}
-
-fn parse_bool(s: &str) -> Result<bool, Error> {
-    if s == "1" || s == "true" {
-        Ok(true)
-    } else if s == "0" || s == "false" {
-        Ok(false)
-    } else {
-        Err(Error::InvalidParam(
-            "could not parse param as bool".to_owned(),
-        ))
+fn deserialize_bool_param<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::<String>::deserialize(deserializer)?;
+    match opt.as_deref() {
+        Some("1") | Some("true") | Some("") => Ok(true),
+        _ => Ok(false),
     }
 }
 

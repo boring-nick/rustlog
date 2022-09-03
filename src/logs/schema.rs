@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use anyhow::Context;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_repr::Serialize_repr;
 use std::{collections::HashMap, fmt::Display};
 use twitch_irc::message::{ClearChatAction, HostTargetAction, IRCMessage, ServerMessage};
 
@@ -38,6 +39,7 @@ pub enum ChannelIdentifier<'a> {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Message {
     pub text: String,
     pub username: String,
@@ -46,7 +48,22 @@ pub struct Message {
     pub timestamp: DateTime<Utc>,
     pub id: String,
     pub raw: String,
+    pub r#type: MessageType,
     pub tags: HashMap<String, String>,
+}
+
+#[derive(Serialize_repr)]
+#[repr(i8)]
+pub enum MessageType {
+    Unset = -1,
+    // Whisper = 0,
+    PrivMsg = 1,
+    ClearChat = 2,
+    // RoomState = 3,
+    UserNotice = 4,
+    // UserState = 5,
+    // Notice = 6,
+    ClearMsg = 13,
 }
 
 impl Message {
@@ -71,8 +88,9 @@ impl Message {
                 display_name: pm.sender.name,
                 channel: pm.channel_login,
                 timestamp: pm.server_timestamp,
-                id: pm.channel_id,
+                id: pm.message_id,
                 raw,
+                r#type: MessageType::PrivMsg,
                 tags,
             }),
             ServerMessage::ClearChat(clear_chat) => {
@@ -104,6 +122,7 @@ impl Message {
                     timestamp: clear_chat.server_timestamp,
                     id: String::new(),
                     raw,
+                    r#type: MessageType::ClearChat,
                     tags,
                 })
             }
@@ -120,6 +139,7 @@ impl Message {
                     timestamp: clear_msg.server_timestamp,
                     id: clear_msg.message_id,
                     raw,
+                    r#type: MessageType::ClearMsg,
                     tags,
                 })
             }
@@ -138,6 +158,7 @@ impl Message {
                     timestamp: user_notice.server_timestamp,
                     id: user_notice.message_id,
                     raw,
+                    r#type: MessageType::UserNotice,
                     tags,
                 })
             }
@@ -164,6 +185,7 @@ impl Message {
                     timestamp: Utc::now(), // is this correct?
                     id: String::new(),
                     raw,
+                    r#type: MessageType::Unset,
                     tags,
                 })
             }
