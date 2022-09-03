@@ -21,7 +21,7 @@ impl Config {
         let contents = fs::read_to_string(CONFIG_FILE_NAME)
             .await
             .with_context(|| format!("Failed to load config from {CONFIG_FILE_NAME}"))?;
-        Ok(serde_json::from_str(&contents).context("Config deserializtion error")?)
+        serde_json::from_str(&contents).context("Config deserializtion error")
     }
 
     /*pub async fn save(&self) -> anyhow::Result<()> {

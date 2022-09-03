@@ -3,8 +3,10 @@ use anyhow::Context;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
-use std::collections::BTreeMap;
-use std::{collections::HashMap, fmt::Display};
+use std::{
+    collections::{BTreeMap, HashMap},
+    fmt::{Display, Write},
+};
 use twitch_irc::message::{ClearChatAction, HostTargetAction, IRCMessage, ServerMessage};
 
 pub type ChannelLogDateMap = BTreeMap<u32, BTreeMap<u32, Vec<u32>>>;
@@ -171,7 +173,7 @@ impl Message {
                     } => {
                         let mut text = format!("now hosting {hosted_channel_login}");
                         if let Some(viewer_count) = viewer_count {
-                            text.push_str(&format!(" with {viewer_count} viewers"))
+                            write!(text, " with {viewer_count} viewers")?;
                         }
                         text
                     }

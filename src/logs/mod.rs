@@ -12,7 +12,7 @@ use itertools::Itertools;
 use std::{
     collections::{BTreeMap, HashMap},
     io::SeekFrom,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Arc,
 };
 use tokio::{
@@ -83,7 +83,7 @@ impl Logs {
 
             self.write_user_log(
                 channel_id,
-                &user_id,
+                user_id,
                 &today.year().to_string(),
                 &today.month().to_string(),
                 index,
@@ -269,7 +269,7 @@ impl Logs {
 
         let indexes: Vec<Index> = buf
             .chunks_exact(index::SIZE)
-            .map(|bytes| Index::from_bytes(bytes))
+            .map(Index::from_bytes)
             .try_collect()?;
 
         let mut lines = Vec::new();
@@ -306,7 +306,7 @@ impl Logs {
     }
 }
 
-fn get_day_folder(root_path: &PathBuf, channel_id: &str, date: Date<Utc>) -> PathBuf {
+fn get_day_folder(root_path: &Path, channel_id: &str, date: Date<Utc>) -> PathBuf {
     root_path
         .join(channel_id)
         .join(date.year().to_string())
@@ -315,7 +315,7 @@ fn get_day_folder(root_path: &PathBuf, channel_id: &str, date: Date<Utc>) -> Pat
 }
 
 pub fn get_channel_path(
-    root_path: &PathBuf,
+    root_path: &Path,
     channel_id: &str,
     year: &str,
     month: &str,
@@ -329,7 +329,7 @@ pub fn get_channel_path(
         .join("channel.txt")
 }
 
-pub fn get_users_path(root_path: &PathBuf, channel_id: &str, year: &str, month: &str) -> PathBuf {
+pub fn get_users_path(root_path: &Path, channel_id: &str, year: &str, month: &str) -> PathBuf {
     root_path
         .join(channel_id)
         .join(year)
@@ -338,7 +338,7 @@ pub fn get_users_path(root_path: &PathBuf, channel_id: &str, year: &str, month: 
 }
 
 fn get_user_index_path(
-    root_path: &PathBuf,
+    root_path: &Path,
     channel_id: &str,
     user_id: &str,
     year: &str,

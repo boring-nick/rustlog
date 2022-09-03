@@ -5,7 +5,7 @@ use std::{
 
 pub const SIZE: usize = size_of::<Index>();
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Index {
     pub day: u32,
     pub offset: u64,
