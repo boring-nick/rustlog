@@ -1,3 +1,5 @@
+use std::collections::{hash_map::Entry, HashMap};
+
 use crate::{
     app::App,
     logs::{
@@ -6,11 +8,12 @@ use crate::{
     },
 };
 use anyhow::Context;
+use futures::future::try_join_all;
 use tokio::{
-    fs::{self, File},
-    io::{AsyncBufReadExt, AsyncSeekExt, BufReader},
+    fs::{self, File, OpenOptions},
+    io::{AsyncBufReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter},
 };
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 use twitch_irc::message::{IRCMessage, ServerMessage};
 
 pub async fn run(app: App<'_>, channels: &[String]) -> anyhow::Result<()> {
@@ -52,6 +55,8 @@ pub async fn run(app: App<'_>, channels: &[String]) -> anyhow::Result<()> {
 
                             let mut line = String::with_capacity(50);
 
+                            let mut user_writers = HashMap::new();
+
                             loop {
                                 offset = reader.stream_position().await?;
                                 let read_bytes = reader.read_line(&mut line).await?;
@@ -84,16 +89,42 @@ pub async fn run(app: App<'_>, channels: &[String]) -> anyhow::Result<()> {
 
                                             debug!("Writing index {index:?} for {user_id}");
 
-                                            app.logs
-                                                .write_user_log(
-                                                    channel_id,
-                                                    &user_id,
-                                                    &year.to_string(),
-                                                    &month.to_string(),
-                                                    index,
-                                                )
+                                            let user_writer = match user_writers
+                                                .entry(user_id.clone())
+                                            {
+                                                Entry::Occupied(occupied) => occupied.into_mut(),
+                                                Entry::Vacant(vacant) => {
+                                                    let users_folder = get_users_path(
+                                                        &app.logs.root_path,
+                                                        channel_id,
+                                                        &year.to_string(),
+                                                        &month.to_string(),
+                                                    );
+                                                    if !users_folder.exists() {
+                                                        fs::create_dir_all(&users_folder).await?;
+                                                    }
+
+                                                    let user_file_path = users_folder
+                                                        .join(format!("{user_id}.indexes"));
+                                                    trace!(
+                                                        "Opening user file at {user_file_path:?}"
+                                                    );
+
+                                                    let user_file = OpenOptions::new()
+                                                        .create(true)
+                                                        .append(true)
+                                                        .open(user_file_path)
+                                                        .await?;
+                                                    let writer = BufWriter::new(user_file);
+
+                                                    vacant.insert(writer)
+                                                }
+                                            };
+
+                                            user_writer
+                                                .write_all(&index.as_bytes())
                                                 .await
-                                                .context("could not write user log")?;
+                                                .context("Could not write to user log")?;
                                         } else {
                                             warn!("Unexpected log entry {line}, ignoring");
                                         }
@@ -103,6 +134,12 @@ pub async fn run(app: App<'_>, channels: &[String]) -> anyhow::Result<()> {
 
                                 line.clear();
                             }
+
+                            try_join_all(user_writers.into_values().map(|mut writer| {
+                                tokio::spawn(async move { writer.flush().await })
+                            }))
+                            .await
+                            .context("Could not flush users")?;
                         }
                     }
                 }
