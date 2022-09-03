@@ -1,4 +1,4 @@
-use crate::logs::schema::ChannelLogDate;
+use crate::{error::Error, logs::schema::ChannelLogDate};
 use serde::{Deserialize, Serialize};
 use std::num::ParseIntError;
 
@@ -42,12 +42,42 @@ pub struct ChannelLogsPath {
 
 #[derive(Deserialize)]
 pub struct LogsParams {
-    #[serde(default = "default_json_param")]
+    #[serde(default = "default_log_param")]
     pub json: String,
+    #[serde(default = "default_log_param")]
+    pub raw: String,
+    #[serde(default = "default_log_param")]
+    pub reverse: String,
 }
 
-fn default_json_param() -> String {
+impl LogsParams {
+    pub fn is_json(&self) -> Result<bool, Error> {
+        parse_bool(&self.json)
+    }
+
+    pub fn is_raw(&self) -> Result<bool, Error> {
+        parse_bool(&self.raw)
+    }
+
+    pub fn is_reverse(&self) -> Result<bool, Error> {
+        parse_bool(&self.reverse)
+    }
+}
+
+fn default_log_param() -> String {
     "0".to_owned()
+}
+
+fn parse_bool(s: &str) -> Result<bool, Error> {
+    if s == "1" || s == "true" {
+        Ok(true)
+    } else if s == "0" || s == "false" {
+        Ok(false)
+    } else {
+        Err(Error::InvalidParam(
+            "could not parse param as bool".to_owned(),
+        ))
+    }
 }
 
 impl TryFrom<&ChannelLogsPath> for ChannelLogDate {
@@ -77,21 +107,21 @@ pub struct AvailableLogDate {
 #[derive(Deserialize)]
 pub struct AvailableLogsParams {
     #[serde(flatten)]
-    pub user: UserIdentifier,
+    pub channel: ChannelParam,
     #[serde(flatten)]
-    pub channel: ChannelIdentifier,
+    pub user: UserParam,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum UserIdentifier {
+pub enum UserParam {
     User(String),
     UserId(String),
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "lowercase")]
-pub enum ChannelIdentifier {
+pub enum ChannelParam {
     Channel(String),
     ChannelId(String),
 }

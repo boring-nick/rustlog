@@ -14,6 +14,8 @@ pub enum Error {
     IoError(#[from] std::io::Error),
     #[error("Int parse error: {0}")]
     ParseIntError(#[from] ParseIntError),
+    #[error("Invalid param: {0}")]
+    InvalidParam(String),
     #[error("Internal error")]
     Internal,
     #[error("Not found")]
@@ -28,6 +30,7 @@ impl IntoResponse for Error {
             Error::ParseIntError(_) => StatusCode::BAD_REQUEST,
             Error::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             Error::NotFound => StatusCode::NOT_FOUND,
+            Error::InvalidParam(_) => StatusCode::BAD_REQUEST,
         };
 
         (status_code, self.to_string()).into_response()

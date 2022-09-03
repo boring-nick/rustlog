@@ -1,4 +1,5 @@
-use crate::{error::Error, logs::Logs, Result};
+use crate::{logs::Logs, Result};
+use anyhow::Context;
 use dashmap::DashMap;
 use std::{collections::HashMap, sync::Arc};
 use tracing::debug;
@@ -69,13 +70,28 @@ impl App<'_> {
         Ok(users)
     }
 
-    pub async fn user_id_from_name(&self, name: String) -> Result<String> {
-        Ok(self
-            .get_users(vec![], vec![name])
-            .await?
-            .into_iter()
-            .next()
-            .ok_or_else(|| Error::NotFound)?
-            .0)
+    pub async fn get_user_id_by_name(&self, name: &str) -> Result<String> {
+        if let Some(id) = self.users.iter().find_map(|item| {
+            if item.value() == name {
+                Some(item.key().clone())
+            } else {
+                None
+            }
+        }) {
+            Ok(id)
+        } else {
+            let request = GetUsersRequest::builder().login(vec![name.into()]).build();
+            let response = self.helix_client.req_get(request, &*self.token).await?;
+            let user = response
+                .data
+                .into_iter()
+                .next()
+                .context("Could not get user")?;
+            let user_id = user.id.into_string();
+
+            self.users.insert(user_id.clone(), user.login.into_string());
+
+            Ok(user_id)
+        }
     }
 }

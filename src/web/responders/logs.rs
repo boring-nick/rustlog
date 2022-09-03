@@ -1,70 +1,55 @@
-use anyhow::{anyhow, Context};
+use crate::logs::schema::Message;
 use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use chrono::{DateTime, Utc};
-use serde::Serialize;
+use itertools::Itertools;
 use serde_json::json;
-use std::collections::HashMap;
-use twitch_irc::message::{IRCMessage, ServerMessage};
 
-pub enum LogsResponse {
-    Plain(Vec<String>),
-    Json(Vec<Message>),
+pub struct LogsResponse {
+    pub response_type: LogsResponseType,
+    pub reverse: bool,
 }
 
-#[derive(Serialize)]
-pub struct Message {
-    pub text: String,
-    pub username: String,
-    pub display_name: String,
-    pub channel: String,
-    pub timestamp: DateTime<Utc>,
-    pub id: String,
-    // pub r#type:
-    pub raw: String,
-    pub tags: HashMap<String, String>,
+pub enum LogsResponseType {
+    Raw(Vec<String>),
+    Processed(ProcessedLogs),
+}
+
+pub struct ProcessedLogs {
+    pub messages: Vec<Message>,
+    pub logs_type: ProcessedLogsType,
+}
+
+pub enum ProcessedLogsType {
+    Text,
+    Json,
 }
 
 impl IntoResponse for LogsResponse {
     fn into_response(self) -> Response {
-        match self {
-            LogsResponse::Plain(lines) => lines.join("\n").into_response(),
-            LogsResponse::Json(messages) => Json(json!({ "messages": messages })).into_response(),
-        }
-    }
-}
+        match self.response_type {
+            LogsResponseType::Raw(mut lines) => {
+                if self.reverse {
+                    lines.reverse();
+                }
 
-impl Message {
-    pub fn parse_from_raw_irc(raw: String) -> anyhow::Result<Self> {
-        let irc_message = IRCMessage::parse(&raw)
-            .with_context(|| format!("Could not parse {raw} as an irc message"))?;
-        let tags = irc_message
-            .tags
-            .clone()
-            .0
-            .into_iter()
-            .map(|(key, value)| (key, value.unwrap_or_default()))
-            .collect();
-        let server_message = ServerMessage::try_from(irc_message).with_context(|| {
-            format!("Could not parse irc message from {raw} as a server message")
-        })?;
+                lines.join("\n").into_response()
+            }
+            LogsResponseType::Processed(processed_logs) => {
+                let mut messages = processed_logs.messages;
+                if self.reverse {
+                    messages.reverse();
+                }
 
-        match server_message {
-            ServerMessage::Privmsg(pm) => Ok(Message {
-                text: pm.message_text,
-                username: pm.sender.login,
-                display_name: pm.sender.name,
-                channel: pm.channel_login,
-                timestamp: pm.server_timestamp,
-                id: pm.channel_id,
-                raw,
-                tags,
-            }),
-            _ => Err(anyhow!(
-                "Given server message {server_message:?} could not be converted"
-            )),
+                match processed_logs.logs_type {
+                    ProcessedLogsType::Text => messages.into_iter().join("\n").into_response(),
+                    ProcessedLogsType::Json => Json(json!({
+                        "messages": messages,
+                    }))
+                    .into_response(),
+                }
+            }
         }
     }
 }

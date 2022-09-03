@@ -20,7 +20,7 @@ use logs::{
 use std::{path::PathBuf, sync::Arc};
 use tokio::{fs::File, io::AsyncReadExt, try_join};
 use tracing::info;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};
 use twitch_api2::{
     twitch_oauth2::{AppAccessToken, Scope},
     HelixClient,
@@ -33,7 +33,7 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
-        // .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
+        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
         .init();
 
     let config = Config::load().await?;
@@ -77,6 +77,16 @@ async fn run(config: Config, logs: Logs) -> anyhow::Result<()> {
 }
 
 async fn reindex(config: Config, logs: Logs, mut channels: Vec<String>) -> anyhow::Result<()> {
+    let helix_client: HelixClient<reqwest::Client> = HelixClient::default();
+    let token = generate_token(&config).await?;
+
+    let app = App {
+        helix_client,
+        token: Arc::new(token),
+        users: Arc::new(DashMap::new()),
+        logs,
+    };
+
     if channels.is_empty() {
         channels = config.channels;
         info!("Reindexing all channels");
@@ -89,7 +99,7 @@ async fn reindex(config: Config, logs: Logs, mut channels: Vec<String>) -> anyho
         info!("Reindexing channels: {channels:?}");
     }
 
-    reindexer::run(logs, &channels).await
+    reindexer::run(app, &channels).await
 }
 
 async fn print_index(file_path: PathBuf) -> anyhow::Result<()> {

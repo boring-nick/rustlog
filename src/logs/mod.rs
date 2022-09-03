@@ -1,19 +1,21 @@
 // pub mod offsets;
+// pub mod formatter;
 pub mod index;
 pub mod schema;
 
-use self::schema::{ChannelLogDate, ChannelLogDateMap, UserLogDateMap};
+use self::schema::{
+    ChannelIdentifier, ChannelLogDate, ChannelLogDateMap, UserIdentifier, UserLogDateMap,
+};
 use crate::{error::Error, logs::index::Index, Result};
-use anyhow::Context;
-use chrono::{Date, Datelike, Timelike, Utc};
+use chrono::{Date, Datelike, Utc};
 use itertools::Itertools;
 use std::{collections::HashMap, io::SeekFrom, path::PathBuf, sync::Arc};
 use tokio::{
     fs::{self, read_dir, File, OpenOptions},
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter},
 };
-use tracing::trace;
-use twitch_irc::message::{AsRawIRC, ClearChatAction, IRCMessage, ServerMessage};
+use tracing::{debug, trace};
+use twitch_irc::message::{AsRawIRC, ClearChatAction, ServerMessage};
 
 #[derive(Debug, Clone)]
 pub struct Logs {
@@ -33,36 +35,41 @@ impl Logs {
         })
     }
 
-    pub async fn write_server_message(&self, msg: ServerMessage) -> Result<()> {
-        if let Some((channel_id, user_id)) = extract_channel_and_user(&msg) {
-            trace!("Logging message {msg:?}");
+    pub async fn write_server_message(
+        &self,
+        msg: ServerMessage,
+        channel_id: &str,
+        maybe_user_id: Option<&str>,
+    ) -> Result<()> {
+        trace!("Logging message {msg:?}");
 
-            let today = Utc::today();
+        let today = Utc::today();
 
-            let day_folder = get_day_folder(&self.root_path, channel_id, today);
-            if !day_folder.exists() {
-                fs::create_dir_all(&day_folder).await?;
-            }
+        let day_folder = get_day_folder(&self.root_path, channel_id, today);
+        if !day_folder.exists() {
+            fs::create_dir_all(&day_folder).await?;
+        }
 
-            let channel_file_path = day_folder.join("channel.txt");
-            trace!("Opening channel file at {channel_file_path:?}");
+        let channel_file_path = day_folder.join("channel.txt");
+        trace!("Opening channel file at {channel_file_path:?}");
 
-            let channel_file = OpenOptions::new()
-                .append(true)
-                .create(true)
-                .open(channel_file_path)
-                .await?;
-            let mut channel_writer = BufWriter::new(channel_file);
+        let channel_file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(channel_file_path)
+            .await?;
+        let mut channel_writer = BufWriter::new(channel_file);
 
-            let offset = channel_writer.seek(SeekFrom::End(0)).await?;
+        let offset = channel_writer.seek(SeekFrom::End(0)).await?;
 
-            let raw_msg = msg.as_raw_irc();
-            let msg_bytes = raw_msg.as_bytes();
+        let raw_msg = msg.as_raw_irc();
+        let msg_bytes = raw_msg.as_bytes();
 
-            channel_writer.write_all(msg_bytes).await?;
-            channel_writer.write_all(b"\n").await?;
-            channel_writer.flush().await?;
+        channel_writer.write_all(msg_bytes).await?;
+        channel_writer.write_all(b"\n").await?;
+        channel_writer.flush().await?;
 
+        if let Some(user_id) = maybe_user_id {
             let index = Index {
                 day: today.day(),
                 offset,
@@ -271,6 +278,7 @@ impl Logs {
                     month,
                     &index.day.to_string(),
                 );
+                debug!("Creating new reader for {channel_file_path:?}");
                 let file = File::open(channel_file_path).await?;
                 let reader = BufReader::new(file);
 
@@ -287,38 +295,6 @@ impl Logs {
         }
 
         Ok(lines)
-    }
-}
-
-pub fn format_message_from_raw(raw: &str) -> anyhow::Result<String> {
-    let irc_message = IRCMessage::parse(raw)?;
-    let server_message = ServerMessage::try_from(irc_message)?;
-
-    format_message(&server_message).context("Could not format given message type")
-}
-
-fn format_message(msg: &ServerMessage) -> Option<String> {
-    match msg {
-        ServerMessage::Privmsg(privmsg) => {
-            let date = privmsg.server_timestamp.date();
-            let year = date.year();
-            let month = date.month();
-            let day = date.day();
-
-            let time = privmsg.server_timestamp.time();
-            let h = time.hour();
-            let m = time.minute();
-            let s = time.second();
-
-            let channel = &privmsg.channel_login;
-            let username = &privmsg.sender.login;
-            let text = &privmsg.message_text;
-
-            Some(format!(
-                "[{year}-{month}-{day} {h}:{m}:{s}] #{channel} {username}: {text}",
-            ))
-        }
-        _ => None,
     }
 }
 
@@ -368,22 +344,48 @@ fn get_user_index_path(
         .join(format!("{user_id}.indexes"))
 }
 
-pub fn extract_channel_and_user(server_msg: &ServerMessage) -> Option<(&str, &str)> {
+pub fn extract_channel_and_user(
+    server_msg: &ServerMessage,
+) -> Option<(ChannelIdentifier, Option<UserIdentifier>)> {
     match server_msg {
-        ServerMessage::Privmsg(privmsg) => Some((&privmsg.channel_id, &privmsg.sender.id)),
-        ServerMessage::ClearChat(clear_chat) => match &clear_chat.action {
-            ClearChatAction::UserBanned {
-                user_login: _,
-                user_id,
-            } => Some(user_id),
-            ClearChatAction::UserTimedOut {
-                user_login: _,
-                user_id,
-                timeout_length: _,
-            } => Some(user_id),
-            _ => None,
+        ServerMessage::Privmsg(privmsg) => Some((
+            ChannelIdentifier::ChannelId(&privmsg.channel_id),
+            Some(UserIdentifier::UserId(&privmsg.sender.id)),
+        )),
+        ServerMessage::ClearChat(clear_chat) => {
+            let channel_id = &clear_chat.channel_id;
+            let user_id = match &clear_chat.action {
+                ClearChatAction::UserBanned {
+                    user_login: _,
+                    user_id,
+                } => Some(user_id),
+                ClearChatAction::UserTimedOut {
+                    user_login: _,
+                    user_id,
+                    timeout_length: _,
+                } => Some(user_id),
+                ClearChatAction::ChatCleared => None,
+            };
+
+            Some((
+                ChannelIdentifier::ChannelId(channel_id),
+                user_id.map(|id| UserIdentifier::UserId(id)),
+            ))
         }
-        .map(|user_id| (clear_chat.channel_id.as_str(), user_id.as_str())),
+        ServerMessage::ClearMsg(clearmsg) => Some((
+            ChannelIdentifier::Channel(&clearmsg.channel_login),
+            Some(UserIdentifier::User(&clearmsg.sender_login)),
+        )),
+        ServerMessage::HostTarget(host_target) => {
+            Some((ChannelIdentifier::Channel(&host_target.channel_login), None))
+        }
+        ServerMessage::RoomState(room_state) => {
+            Some((ChannelIdentifier::ChannelId(&room_state.channel_id), None))
+        }
+        ServerMessage::UserNotice(user_notice) => Some((
+            ChannelIdentifier::ChannelId(&user_notice.channel_id),
+            Some(UserIdentifier::UserId(&user_notice.sender.id)),
+        )),
         _ => None,
     }
 }

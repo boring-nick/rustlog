@@ -1,6 +1,16 @@
-use crate::{app::App, config::Config};
-use tracing::{error, info, trace};
-use twitch_irc::{login::LoginCredentials, ClientConfig, SecureTCPTransport, TwitchIRCClient};
+use crate::{
+    app::App,
+    config::Config,
+    logs::{
+        extract_channel_and_user,
+        schema::{ChannelIdentifier, UserIdentifier},
+    },
+};
+use tracing::{error, info};
+use twitch_irc::{
+    login::LoginCredentials, message::ServerMessage, ClientConfig, SecureTCPTransport,
+    TwitchIRCClient,
+};
 
 pub async fn run<C: LoginCredentials>(login_credentials: C, app: App<'_>, config: Config) {
     let client_config = ClientConfig::new_simple(login_credentials);
@@ -14,9 +24,8 @@ pub async fn run<C: LoginCredentials>(login_credentials: C, app: App<'_>, config
             }
 
             while let Some(msg) = receiver.recv().await {
-                trace!("Received message {msg:?}");
-                if let Err(err) = app.logs.write_server_message(msg).await {
-                    error!("Could not log message: {err}");
+                if let Err(e) = write_message(msg, &app).await {
+                    error!("Could not write log: {e}");
                 }
             }
         }
@@ -24,4 +33,26 @@ pub async fn run<C: LoginCredentials>(login_credentials: C, app: App<'_>, config
             error!("Could not fetch channel list: {err}");
         }
     }
+}
+
+async fn write_message(msg: ServerMessage, app: &App<'_>) -> anyhow::Result<()> {
+    if let Some((channel, maybe_user)) = extract_channel_and_user(&msg) {
+        let channel_id = match channel {
+            ChannelIdentifier::Channel(name) => app.get_user_id_by_name(name).await?,
+            ChannelIdentifier::ChannelId(id) => id.to_owned(),
+        };
+        let maybe_user_id = if let Some(user) = maybe_user {
+            Some(match user {
+                UserIdentifier::User(name) => app.get_user_id_by_name(name).await?,
+                UserIdentifier::UserId(id) => id.to_owned(),
+            })
+        } else {
+            None
+        };
+
+        app.logs
+            .write_server_message(msg, &channel_id, maybe_user_id.as_deref())
+            .await?;
+    }
+    Ok(())
 }
