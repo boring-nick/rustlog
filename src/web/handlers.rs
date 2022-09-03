@@ -50,7 +50,7 @@ pub async fn get_channel_logs(
                 .await?
                 .into_iter()
                 .next()
-                .ok_or_else(|| Error::NotFound)?;
+                .ok_or(Error::NotFound)?;
             id
         }
 
@@ -97,7 +97,7 @@ pub async fn get_user_logs_by_name(
         .await?
         .into_iter()
         .next()
-        .ok_or_else(|| Error::NotFound)?
+        .ok_or(Error::NotFound)?
         .0;
 
     get_user_logs(app, path, params, user_id).await
@@ -131,7 +131,7 @@ async fn get_user_logs(
                 .await?
                 .into_iter()
                 .next()
-                .ok_or_else(|| Error::NotFound)?;
+                .ok_or(Error::NotFound)?;
             id
         }
 

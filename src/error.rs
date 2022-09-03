@@ -9,11 +9,11 @@ use twitch_api2::helix::ClientRequestError;
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Twitch API error: {0}")]
-    HelixError(#[from] ClientRequestError<reqwest::Error>),
+    Helix(#[from] ClientRequestError<reqwest::Error>),
     #[error("IO Error: {0}")]
-    IoError(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
     #[error("Int parse error: {0}")]
-    ParseIntError(#[from] ParseIntError),
+    ParseInt(#[from] ParseIntError),
     #[error("Invalid param: {0}")]
     InvalidParam(String),
     #[error("Internal error")]
@@ -25,9 +25,9 @@ pub enum Error {
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
         let status_code = match self {
-            Error::HelixError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Error::IoError(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            Error::ParseIntError(_) => StatusCode::BAD_REQUEST,
+            Error::Helix(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::ParseInt(_) => StatusCode::BAD_REQUEST,
             Error::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             Error::NotFound => StatusCode::NOT_FOUND,
             Error::InvalidParam(_) => StatusCode::BAD_REQUEST,

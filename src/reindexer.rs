@@ -72,7 +72,7 @@ pub async fn run(app: App<'_>, channels: &[String]) -> anyhow::Result<()> {
                                             let user_id = match user {
                                                 UserIdentifier::UserId(id) => id.to_owned(),
                                                 UserIdentifier::User(name) => {
-                                                    app.get_user_id_by_name(&name).await?
+                                                    app.get_user_id_by_name(name).await?
                                                 }
                                             };
 
