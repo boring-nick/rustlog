@@ -18,7 +18,11 @@ use logs::{
     Logs,
 };
 use std::{path::PathBuf, sync::Arc};
-use tokio::{fs::File, io::AsyncReadExt, try_join};
+use tokio::{
+    fs::{read_dir, File},
+    io::AsyncReadExt,
+    try_join,
+};
 use tracing::info;
 use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};
 use twitch_api2::{
@@ -88,8 +92,19 @@ async fn reindex(config: Config, logs: Logs, mut channels: Vec<String>) -> anyho
     };
 
     if channels.is_empty() {
-        channels = config.channels;
         info!("Reindexing all channels");
+        let mut dir = read_dir(&*app.logs.root_path).await?;
+
+        while let Some(entry) = dir.next_entry().await? {
+            if entry.metadata().await?.is_dir() {
+                let channel = entry
+                    .file_name()
+                    .to_str()
+                    .expect("invalid folder name")
+                    .to_owned();
+                channels.push(channel);
+            }
+        }
     } else {
         for channel in &channels {
             if !config.channels.contains(channel) {
