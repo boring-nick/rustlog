@@ -26,10 +26,22 @@ pub async fn run(config: Config, app: App<'static>) {
         .route("/channels", get(handlers::get_channels))
         .route("/list", get(handlers::list_available_user_logs))
         .route(
+            "/:channel_id_type/:channel",
+            get(handlers::redirect_to_latest_channel_logs),
+        )
+        // For some reason axum considers it a path overlap if user id type is dynamic
+        .route(
+            "/:channel_id_type/:channel/user/:user",
+            get(handlers::redirect_to_latest_user_name_logs),
+        )
+        .route(
+            "/:channel_id_type/:channel/userid/:user",
+            get(handlers::redirect_to_latest_user_id_logs),
+        )
+        .route(
             "/:channel_id_type/:channel/:year/:month/:day",
             get(handlers::get_channel_logs),
         )
-        // For some reason axum considers it a path overlap if user id type is dynamic
         .route(
             "/:channel_id_type/:channel/user/:user/:year/:month",
             get(handlers::get_user_logs_by_name),
