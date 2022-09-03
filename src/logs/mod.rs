@@ -379,9 +379,9 @@ pub fn extract_channel_and_user(
         ServerMessage::HostTarget(host_target) => {
             Some((ChannelIdentifier::Channel(&host_target.channel_login), None))
         }
-        ServerMessage::RoomState(room_state) => {
+        /*ServerMessage::RoomState(room_state) => {
             Some((ChannelIdentifier::ChannelId(&room_state.channel_id), None))
-        }
+        }*/
         ServerMessage::UserNotice(user_notice) => Some((
             ChannelIdentifier::ChannelId(&user_notice.channel_id),
             Some(UserIdentifier::UserId(&user_notice.sender.id)),
