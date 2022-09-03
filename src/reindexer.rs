@@ -103,7 +103,6 @@ pub async fn run(app: App<'_>, channels: &[String]) -> anyhow::Result<()> {
 
                                 line.clear();
                             }
-                            info!("Finished day");
                         }
                     }
                 }

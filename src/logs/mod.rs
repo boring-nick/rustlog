@@ -9,7 +9,12 @@ use self::schema::{
 use crate::{error::Error, logs::index::Index, Result};
 use chrono::{Date, Datelike, Utc};
 use itertools::Itertools;
-use std::{collections::HashMap, io::SeekFrom, path::PathBuf, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    io::SeekFrom,
+    path::PathBuf,
+    sync::Arc,
+};
 use tokio::{
     fs::{self, read_dir, File, OpenOptions},
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter},
@@ -121,12 +126,12 @@ impl Logs {
         let channel_path = self.root_path.join(channel_id);
         let mut channel_dir = read_dir(channel_path).await?;
 
-        let mut years = HashMap::new();
+        let mut years = BTreeMap::new();
 
         while let Some(year_entry) = channel_dir.next_entry().await? {
             if year_entry.metadata().await?.is_dir() {
                 let mut year_dir = read_dir(year_entry.path()).await?;
-                let mut months = HashMap::new();
+                let mut months = BTreeMap::new();
 
                 while let Some(month_entry) = year_dir.next_entry().await? {
                     if month_entry.metadata().await?.is_dir() {
@@ -150,6 +155,8 @@ impl Logs {
                                 }
                             }
                         }
+
+                        days.sort_unstable();
 
                         let month = month_entry
                             .file_name()
@@ -184,7 +191,7 @@ impl Logs {
         let channel_path = self.root_path.join(channel_id);
         let mut channel_dir = read_dir(channel_path).await?;
 
-        let mut years = HashMap::new();
+        let mut years = BTreeMap::new();
 
         while let Some(year_entry) = channel_dir.next_entry().await? {
             if year_entry.metadata().await?.is_dir() {
@@ -203,6 +210,7 @@ impl Logs {
                     }
                 }
 
+                months.sort_unstable();
                 let year = year_entry
                     .file_name()
                     .to_str()
