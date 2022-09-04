@@ -10,7 +10,7 @@ use std::{
 use twitch_irc::message::{ClearChatAction, HostTargetAction, IRCMessage, ServerMessage};
 
 pub type ChannelLogDateMap = BTreeMap<u32, BTreeMap<u32, Vec<u32>>>;
-pub type UserLogDateMap = BTreeMap<String, Vec<String>>;
+pub type UserLogDateMap = BTreeMap<u32, Vec<u32>>;
 
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 

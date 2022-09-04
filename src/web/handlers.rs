@@ -193,8 +193,8 @@ pub async fn list_available_user_logs(
 
     for (year, months) in available_logs {
         let available_dates = months.into_iter().map(|month| AvailableLogDate {
-            year: year.clone(),
-            month,
+            year: year.to_string(),
+            month: month.to_string(),
         });
         results.extend(available_dates);
     }
