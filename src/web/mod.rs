@@ -1,11 +1,11 @@
+mod frontend;
 mod handlers;
 mod responders;
 mod schema;
 mod trace_layer;
 
 use crate::{app::App, config::Config};
-use axum::{routing::get, Extension, Router};
-use axum_extra::routing::SpaRouter;
+use axum::{handler::Handler, routing::get, Extension, Router};
 use std::{
     net::{AddrParseError, SocketAddr},
     str::FromStr,
@@ -19,10 +19,7 @@ pub async fn run(config: Config, app: App<'static>) {
 
     let cors = CorsLayer::permissive();
 
-    let spa = SpaRouter::new("/_app", "web/build/_app").index_file("../index.html");
-
     let app = Router::new()
-        .merge(spa)
         .route("/channels", get(handlers::get_channels))
         .route("/list", get(handlers::list_available_user_logs))
         .route(
@@ -57,6 +54,7 @@ pub async fn run(config: Config, app: App<'static>) {
                 .make_span_with(trace_layer::make_span_with)
                 .on_response(trace_layer::on_response),
         )
+        .fallback(frontend::static_asset.into_service())
         .layer(cors);
 
     info!("Listening on {listen_address}");
