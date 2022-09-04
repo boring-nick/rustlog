@@ -2,3 +2,4 @@
 /logs*
 config.json
 **node_modules/
+Dockerfile
