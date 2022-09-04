@@ -204,6 +204,7 @@ impl Logs {
                         let month = month_entry
                             .file_name()
                             .to_str()
+                            .and_then(|month| month.parse::<u32>().ok())
                             .expect("invalid month name")
                             .to_owned();
                         months.push(month);
@@ -214,6 +215,7 @@ impl Logs {
                 let year = year_entry
                     .file_name()
                     .to_str()
+                    .and_then(|year| year.parse::<u32>().ok())
                     .expect("invalid year")
                     .to_owned();
                 years.insert(year, months);

@@ -19,7 +19,7 @@ pub async fn run(config: Config, app: App<'static>) {
 
     let cors = CorsLayer::permissive();
 
-    let spa = SpaRouter::new("/_app", "web/build");
+    let spa = SpaRouter::new("/_app", "web/build/_app").index_file("../index.html");
 
     let app = Router::new()
         .merge(spa)
