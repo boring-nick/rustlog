@@ -3,6 +3,7 @@ mod bot;
 mod config;
 mod error;
 mod logs;
+mod migrator;
 mod reindexer;
 mod web;
 
@@ -56,6 +57,7 @@ async fn main() -> anyhow::Result<()> {
             reindex(config, logs, channel_list).await
         }
         Some(Command::PrintIndex { file_path }) => print_index(file_path).await,
+        Some(Command::Migrate(options)) => migrate(config, logs, options).await,
     }
 }
 
@@ -91,28 +93,7 @@ async fn reindex(config: Config, logs: Logs, mut channels: Vec<String>) -> anyho
         logs,
     };
 
-    if channels.is_empty() {
-        info!("Reindexing all channels");
-        let mut dir = read_dir(&*app.logs.root_path).await?;
-
-        while let Some(entry) = dir.next_entry().await? {
-            if entry.metadata().await?.is_dir() {
-                let channel = entry
-                    .file_name()
-                    .to_str()
-                    .expect("invalid folder name")
-                    .to_owned();
-                channels.push(channel);
-            }
-        }
-    } else {
-        for channel in &channels {
-            if !config.channels.contains(channel) {
-                return Err(anyhow!("unknown channel: {channel}"));
-            }
-        }
-        info!("Reindexing channels: {channels:?}");
-    }
+    populate_channel_list(&mut channels, &app, &config).await?;
 
     reindexer::run(app, &channels).await
 }
@@ -130,6 +111,27 @@ async fn print_index(file_path: PathBuf) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn migrate(config: Config, logs: Logs, options: MigrateOptions) -> anyhow::Result<()> {
+    if !options.delete_redundant_logs && !options.keep_redundat_logs {
+        return Err(anyhow!("Neither `--delete-redundant-logs` or `--keep-redundant-logs` is specified. See `rustlog migrate --help` for more information."));
+    }
+
+    let helix_client: HelixClient<reqwest::Client> = HelixClient::default();
+    let token = generate_token(&config).await?;
+
+    let app = App {
+        helix_client,
+        token: Arc::new(token),
+        users: Arc::new(DashMap::new()),
+        logs,
+    };
+
+    let mut channels = Vec::new();
+    populate_channel_list(&mut channels, &app, &config).await?;
+
+    migrator::run(&app, &channels, options.delete_redundant_logs).await
+}
+
 async fn generate_token(config: &Config) -> anyhow::Result<AppAccessToken> {
     let helix_client: HelixClient<reqwest::Client> = HelixClient::default();
     let token = AppAccessToken::get_app_access_token(
@@ -142,6 +144,35 @@ async fn generate_token(config: &Config) -> anyhow::Result<AppAccessToken> {
     info!("Generated new app token");
 
     Ok(token)
+}
+
+async fn populate_channel_list(
+    channels: &mut Vec<String>,
+    app: &App<'_>,
+    config: &Config,
+) -> anyhow::Result<()> {
+    if channels.is_empty() {
+        let mut dir = read_dir(&*app.logs.root_path).await?;
+
+        while let Some(entry) = dir.next_entry().await? {
+            if entry.metadata().await?.is_dir() {
+                let channel = entry
+                    .file_name()
+                    .to_str()
+                    .expect("invalid folder name")
+                    .to_owned();
+                channels.push(channel);
+            }
+        }
+    } else {
+        for channel in channels.iter() {
+            if !config.channels.contains(channel) {
+                return Err(anyhow!("unknown channel: {channel}"));
+            }
+        }
+        info!("Reindexing channels: {channels:?}");
+    }
+    Ok(())
 }
 
 #[derive(Parser)]
@@ -161,4 +192,18 @@ enum Command {
     },
     /// Print index
     PrintIndex { file_path: PathBuf },
+    /// Migrate existing justlog logs
+    Migrate(MigrateOptions),
+}
+
+#[derive(Parser)]
+struct MigrateOptions {
+    /// Deletes unneeded user logs after migration to save space.
+    /// WARNING: this will make logs incompatible with justlog!
+    #[clap(long, value_parser, default_value = "false")]
+    pub delete_redundant_logs: bool,
+    /// Keep user logs which are not used by rustlog.
+    /// Use this if you want your logs to still work with justlog.
+    #[clap(long, value_parser, default_value = "false")]
+    pub keep_redundat_logs: bool,
 }

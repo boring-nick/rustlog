@@ -22,6 +22,9 @@ use tokio::{
 use tracing::{debug, trace};
 use twitch_irc::message::{AsRawIRC, ClearChatAction, ServerMessage};
 
+pub const COMPRESSED_CHANNEL_FILE: &str = "channel.txt.gz";
+pub const UNCOMPRESSED_CHANNEL_FILE: &str = "channel.txt";
+
 #[derive(Debug, Clone)]
 pub struct Logs {
     pub root_path: Arc<PathBuf>,
@@ -122,7 +125,11 @@ impl Logs {
         Ok(())
     }
 
-    pub async fn get_available_channel_logs(&self, channel_id: &str) -> Result<ChannelLogDateMap> {
+    pub async fn get_available_channel_logs(
+        &self,
+        channel_id: &str,
+        include_compressed: bool,
+    ) -> Result<ChannelLogDateMap> {
         let channel_path = self.root_path.join(channel_id);
         let mut channel_dir = read_dir(channel_path).await?;
 
@@ -139,17 +146,31 @@ impl Logs {
                         let mut days = Vec::new();
 
                         while let Some(day_entry) = month_dir.next_entry().await? {
-                            if day_entry.metadata().await?.is_dir() {
-                                let channel_file_path = day_entry.path().join("channel.txt");
+                            if day_entry.metadata().await?.is_dir()
+                                && day_entry.file_name().to_str() != Some("users")
+                            {
+                                let day = day_entry
+                                    .file_name()
+                                    .to_str()
+                                    .and_then(|name| name.parse().ok())
+                                    .expect("invalid log entry name");
 
-                                if let Ok(metadata) = fs::metadata(channel_file_path).await {
-                                    if metadata.is_file() {
-                                        let day = day_entry
-                                            .file_name()
-                                            .to_str()
-                                            .and_then(|name| name.parse().ok())
-                                            .expect("invalid log entry name");
+                                let uncompressed_channel_file_path =
+                                    day_entry.path().join(UNCOMPRESSED_CHANNEL_FILE);
 
+                                if fs::metadata(&uncompressed_channel_file_path)
+                                    .await
+                                    .map_or(false, |metadata| metadata.is_file())
+                                {
+                                    days.push(day);
+                                } else if include_compressed {
+                                    let compressed_channel_file_path =
+                                        day_entry.path().join(COMPRESSED_CHANNEL_FILE);
+
+                                    if fs::metadata(&compressed_channel_file_path)
+                                        .await
+                                        .map_or(false, |metadata| metadata.is_file())
+                                    {
                                         days.push(day);
                                     }
                                 }
@@ -236,6 +257,7 @@ impl Logs {
             &year.to_string(),
             &month.to_string(),
             &day.to_string(),
+            false,
         );
         trace!("Reading logs from {channel_file_path:?}");
 
@@ -287,6 +309,7 @@ impl Logs {
                     year,
                     month,
                     &index.day.to_string(),
+                    false,
                 );
                 debug!("Creating new reader for {channel_file_path:?}");
                 let file = File::open(channel_file_path).await?;
@@ -322,13 +345,15 @@ pub fn get_channel_path(
     year: &str,
     month: &str,
     day: &str,
+    compressed: bool,
 ) -> PathBuf {
-    root_path
-        .join(channel_id)
-        .join(year)
-        .join(month)
-        .join(day)
-        .join("channel.txt")
+    let base_path = root_path.join(channel_id).join(year).join(month).join(day);
+
+    if compressed {
+        base_path.join(COMPRESSED_CHANNEL_FILE)
+    } else {
+        base_path.join(UNCOMPRESSED_CHANNEL_FILE)
+    }
 }
 
 pub fn get_users_path(root_path: &Path, channel_id: &str, year: &str, month: &str) -> PathBuf {
