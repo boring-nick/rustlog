@@ -10,6 +10,7 @@ use anyhow::Context;
 use futures::future::try_join_all;
 use std::{
     collections::{hash_map::Entry, HashMap},
+    convert::TryFrom,
     time::Instant,
 };
 use tokio::{
@@ -91,20 +92,34 @@ pub async fn reindex_channel(
                         break;
                     }
 
-                    match IRCMessage::parse(line.trim_end())
-                        .map_err(|err| err.to_string())
-                        .and_then(|irc_msg| {
-                            ServerMessage::try_from(irc_msg).map_err(|err| err.to_string())
-                        }) {
-                        Ok(server_msg) => {
-                            if let Some((_, Some(user))) = extract_channel_and_user(&server_msg) {
-                                let user_id = match user {
-                                    UserIdentifier::UserId(id) => id.to_owned(),
-                                    UserIdentifier::User(name) => {
-                                        app.get_user_id_by_name(name).await?
+                    match IRCMessage::parse(line.trim_end()) {
+                        Ok(irc_message) => {
+                            let maybe_user_id = match ServerMessage::try_from(irc_message.clone()) {
+                                Ok(server_msg) => {
+                                    if let Some((_, Some(user))) =
+                                        extract_channel_and_user(&server_msg)
+                                    {
+                                        Some(match user {
+                                            UserIdentifier::UserId(id) => id.to_owned(),
+                                            UserIdentifier::User(name) => {
+                                                app.get_user_id_by_name(name).await?
+                                            }
+                                        })
+                                    } else {
+                                        None
                                     }
-                                };
+                                }
+                                Err(err) => {
+                                    warn!("Could not parse message as a server message: {err}, attempting basic extraction");
+                                    if let Some(user_id) = irc_message.tags.0.get("user-id") {
+                                        user_id.clone()
+                                    } else {
+                                        None
+                                    }
+                                }
+                            };
 
+                            if let Some(user_id) = maybe_user_id {
                                 let index = Index {
                                     day: *day,
                                     offset,
@@ -146,13 +161,13 @@ pub async fn reindex_channel(
                                     .await
                                     .context("Could not write to user log")?;
                             } else {
-                                warn!("Unexpected log entry {line}, ignoring");
+                                debug!("Skipping message {irc_message:?}");
                             }
-                        }
-                        Err(err) => error!("Malformed message {line}: {err}"),
-                    }
 
-                    line.clear();
+                            line.clear();
+                        }
+                        Err(err) => warn!("Malfromed message: {line} {err}"),
+                    }
                 }
 
                 try_join_all(
