@@ -4,18 +4,18 @@ mod responders;
 mod schema;
 mod trace_layer;
 
-use crate::{app::App, config::Config};
+use crate::app::App;
 use axum::{handler::Handler, routing::get, Extension, Router};
 use std::{
     net::{AddrParseError, SocketAddr},
     str::FromStr,
-    sync::Arc,
 };
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;
 
-pub async fn run(config: Config, app: App<'static>) {
-    let listen_address = parse_listen_addr(&config.listen_address).expect("Invalid listen address");
+pub async fn run(app: App<'static>) {
+    let listen_address =
+        parse_listen_addr(&app.config.listen_address).expect("Invalid listen address");
 
     let cors = CorsLayer::permissive();
 
@@ -48,7 +48,6 @@ pub async fn run(config: Config, app: App<'static>) {
             get(handlers::get_user_logs_by_id),
         )
         .layer(Extension(app))
-        .layer(Extension(Arc::new(config)))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace_layer::make_span_with)

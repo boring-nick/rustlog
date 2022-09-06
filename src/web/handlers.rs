@@ -7,7 +7,6 @@ use super::{
 };
 use crate::{
     app::App,
-    config::Config,
     error::Error,
     logs::schema::{ChannelLogDate, Message},
     Result,
@@ -18,15 +17,13 @@ use axum::{
     Extension, Json,
 };
 use chrono::{Datelike, Utc};
-use std::sync::Arc;
 use tracing::debug;
 
-pub async fn get_channels(
-    app: Extension<App<'_>>,
-    config: Extension<Arc<Config>>,
-) -> Json<ChannelsList> {
+pub async fn get_channels(app: Extension<App<'_>>) -> Json<ChannelsList> {
+    let channel_ids = app.config.channels.read().unwrap().clone();
+
     let channels = app
-        .get_users(config.channels.clone(), vec![])
+        .get_users(Vec::from_iter(channel_ids), vec![])
         .await
         .unwrap();
 
@@ -46,16 +43,12 @@ pub async fn get_channel_logs(
     debug!("Params: {logs_params:?}");
 
     let channel_id = match channel_log_params.channel_id_type {
-        ChannelIdType::Name => {
-            let (id, _) = app
-                .get_users(vec![], vec![channel_log_params.channel.clone()])
-                .await?
-                .into_iter()
-                .next()
-                .ok_or(Error::NotFound)?;
-            id
-        }
-
+        ChannelIdType::Name => app
+            .get_users(vec![], vec![channel_log_params.channel.clone()])
+            .await?
+            .into_keys()
+            .next()
+            .ok_or(Error::NotFound)?,
         ChannelIdType::Id => channel_log_params.channel.clone(),
     };
 

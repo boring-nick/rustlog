@@ -70,12 +70,12 @@ async fn run(config: Config, logs: Logs) -> anyhow::Result<()> {
         token: Arc::new(token),
         users: Arc::new(DashMap::new()),
         logs: logs.clone(),
+        config: Arc::new(config),
     };
 
     let login_credentials = StaticLoginCredentials::anonymous();
-    let bot_handle = tokio::spawn(bot::run(login_credentials, app.clone(), config.clone()));
-
-    let web_handle = tokio::spawn(web::run(config, app));
+    let bot_handle = tokio::spawn(bot::run(login_credentials, app.clone()));
+    let web_handle = tokio::spawn(web::run(app));
 
     try_join!(bot_handle, web_handle)?;
 
@@ -90,10 +90,11 @@ async fn reindex(config: Config, logs: Logs, mut channels: Vec<String>) -> anyho
         helix_client,
         token: Arc::new(token),
         users: Arc::new(DashMap::new()),
+        config: Arc::new(config),
         logs,
     };
 
-    populate_channel_list(&mut channels, &app, &config).await?;
+    populate_channel_list(&mut channels, &app).await?;
 
     reindexer::run(app, &channels).await
 }
@@ -124,10 +125,11 @@ async fn migrate(config: Config, logs: Logs, options: MigrateOptions) -> anyhow:
         token: Arc::new(token),
         users: Arc::new(DashMap::new()),
         logs,
+        config: Arc::new(config),
     };
 
     let mut channels = Vec::new();
-    populate_channel_list(&mut channels, &app, &config).await?;
+    populate_channel_list(&mut channels, &app).await?;
 
     migrator::run(&app, &channels, options.delete_redundant_logs).await
 }
@@ -146,11 +148,7 @@ async fn generate_token(config: &Config) -> anyhow::Result<AppAccessToken> {
     Ok(token)
 }
 
-async fn populate_channel_list(
-    channels: &mut Vec<String>,
-    app: &App<'_>,
-    config: &Config,
-) -> anyhow::Result<()> {
+async fn populate_channel_list(channels: &mut Vec<String>, app: &App<'_>) -> anyhow::Result<()> {
     if channels.is_empty() {
         let mut dir = read_dir(&*app.logs.root_path).await?;
 
@@ -166,7 +164,7 @@ async fn populate_channel_list(
         }
     } else {
         for channel in channels.iter() {
-            if !config.channels.contains(channel) {
+            if !app.config.channels.read().unwrap().contains(channel) {
                 return Err(anyhow!("unknown channel: {channel}"));
             }
         }
