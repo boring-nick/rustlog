@@ -1,4 +1,4 @@
-use crate::{logs::Logs, Result};
+use crate::{config::Config, logs::Logs, Result};
 use anyhow::Context;
 use dashmap::DashMap;
 use std::{collections::HashMap, sync::Arc};
@@ -11,6 +11,7 @@ pub struct App<'a> {
     pub token: Arc<AppAccessToken>,
     pub users: Arc<DashMap<String, String>>, // User id, login name
     pub logs: Logs,
+    pub config: Arc<Config>,
 }
 
 impl App<'_> {

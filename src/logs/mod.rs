@@ -45,7 +45,7 @@ impl Logs {
 
     pub async fn write_server_message(
         &self,
-        msg: ServerMessage,
+        msg: &ServerMessage,
         channel_id: &str,
         maybe_user_id: Option<&str>,
     ) -> Result<()> {
