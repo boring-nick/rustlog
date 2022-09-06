@@ -110,7 +110,7 @@ pub async fn reindex_channel(
                                     }
                                 }
                                 Err(err) => {
-                                    warn!("Could not parse message as a server message: {err}, attempting basic extraction");
+                                    debug!("{err}, attempting basic extraction");
                                     if let Some(user_id) = irc_message.tags.0.get("user-id") {
                                         user_id.clone()
                                     } else {
