@@ -53,6 +53,7 @@ pub async fn get_channel_logs(
     };
 
     let log_date = ChannelLogDate::try_from(&channel_log_params)?;
+    debug!("Querying logs for date {log_date:?}");
 
     let lines = app.logs.read_channel(&channel_id, log_date).await?;
 

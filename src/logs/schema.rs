@@ -14,7 +14,7 @@ pub type UserLogDateMap = BTreeMap<u32, Vec<u32>>;
 
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct ChannelLogDate {
     pub year: u32,
     pub month: u32,

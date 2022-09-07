@@ -1,5 +1,3 @@
-// pub mod offsets;
-// pub mod formatter;
 pub mod index;
 pub mod schema;
 
@@ -7,7 +5,7 @@ use self::schema::{
     ChannelIdentifier, ChannelLogDate, ChannelLogDateMap, UserIdentifier, UserLogDateMap,
 };
 use crate::{error::Error, logs::index::Index, Result};
-use chrono::{Date, Datelike, Utc};
+use chrono::{Date, Datelike, TimeZone, Utc};
 use itertools::Itertools;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -20,7 +18,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter},
 };
 use tracing::{debug, trace};
-use twitch_irc::message::{AsRawIRC, ClearChatAction, ServerMessage};
+use twitch_irc::message::{AsRawIRC, ClearChatAction, IRCMessage, ServerMessage};
 
 pub const COMPRESSED_CHANNEL_FILE: &str = "channel.txt.gz";
 pub const UNCOMPRESSED_CHANNEL_FILE: &str = "channel.txt";
@@ -43,6 +41,23 @@ impl Logs {
         })
     }
 
+    pub async fn get_stored_channels(&self) -> Result<Vec<String>> {
+        let mut entries = read_dir(&*self.root_path).await?;
+
+        let mut channels = Vec::new();
+        while let Some(entry) = entries.next_entry().await? {
+            if entry.metadata().await?.is_dir() {
+                let channel = entry
+                    .file_name()
+                    .into_string()
+                    .expect("invalid channel folder name");
+                channels.push(channel);
+            }
+        }
+
+        Ok(channels)
+    }
+
     pub async fn write_server_message(
         &self,
         msg: &ServerMessage,
@@ -53,7 +68,7 @@ impl Logs {
 
         let today = Utc::today();
 
-        let day_folder = get_day_folder(&self.root_path, channel_id, today);
+        let day_folder = get_day_path(&self.root_path, channel_id, today);
         if !day_folder.exists() {
             fs::create_dir_all(&day_folder).await?;
         }
@@ -251,14 +266,9 @@ impl Logs {
         channel_id: &str,
         ChannelLogDate { year, month, day }: ChannelLogDate,
     ) -> Result<Vec<String>> {
-        let channel_file_path = get_channel_path(
-            &self.root_path,
-            channel_id,
-            &year.to_string(),
-            &month.to_string(),
-            &day.to_string(),
-            false,
-        );
+        let date = Utc.ymd(year.try_into().unwrap(), month, day);
+
+        let channel_file_path = get_channel_path(&self.root_path, channel_id, date, false);
         trace!("Reading logs from {channel_file_path:?}");
 
         let mut file = File::open(channel_file_path).await?;
@@ -303,14 +313,9 @@ impl Logs {
             let reader = if let Some(reader) = readers.get_mut(&index.day) {
                 reader
             } else {
-                let channel_file_path = get_channel_path(
-                    &self.root_path,
-                    channel_id,
-                    year,
-                    month,
-                    &index.day.to_string(),
-                    false,
-                );
+                let date = Utc.ymd(year.parse()?, month.parse()?, index.day);
+
+                let channel_file_path = get_channel_path(&self.root_path, channel_id, date, false);
                 debug!("Creating new reader for {channel_file_path:?}");
                 let file = File::open(channel_file_path).await?;
                 let reader = BufReader::new(file);
@@ -331,7 +336,7 @@ impl Logs {
     }
 }
 
-fn get_day_folder(root_path: &Path, channel_id: &str, date: Date<Utc>) -> PathBuf {
+pub fn get_day_path(root_path: &Path, channel_id: &str, date: Date<Utc>) -> PathBuf {
     root_path
         .join(channel_id)
         .join(date.year().to_string())
@@ -342,12 +347,14 @@ fn get_day_folder(root_path: &Path, channel_id: &str, date: Date<Utc>) -> PathBu
 pub fn get_channel_path(
     root_path: &Path,
     channel_id: &str,
-    year: &str,
-    month: &str,
-    day: &str,
+    date: Date<Utc>,
     compressed: bool,
 ) -> PathBuf {
-    let base_path = root_path.join(channel_id).join(year).join(month).join(day);
+    let base_path = root_path
+        .join(channel_id)
+        .join(&date.year().to_string())
+        .join(&date.month().to_string())
+        .join(&date.day().to_string());
 
     if compressed {
         base_path.join(COMPRESSED_CHANNEL_FILE)
@@ -364,7 +371,7 @@ pub fn get_users_path(root_path: &Path, channel_id: &str, year: &str, month: &st
         .join("users")
 }
 
-fn get_user_index_path(
+pub fn get_user_index_path(
     root_path: &Path,
     channel_id: &str,
     user_id: &str,
@@ -377,6 +384,18 @@ fn get_user_index_path(
         .join(month)
         .join("users")
         .join(format!("{user_id}.indexes"))
+}
+
+pub fn extract_channel_and_user_from_raw(
+    raw_msg: &'_ IRCMessage,
+) -> Option<(&'_ str, Option<&'_ str>)> {
+    let tags = &raw_msg.tags.0;
+    tags.get("room-id")
+        .and_then(|item| item.as_deref())
+        .map(|channel_id| {
+            let user_id = tags.get("user-id").and_then(|user_id| user_id.as_deref());
+            (channel_id, user_id)
+        })
 }
 
 pub fn extract_channel_and_user(

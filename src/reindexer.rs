@@ -7,9 +7,10 @@ use crate::{
     },
 };
 use anyhow::Context;
+use chrono::{TimeZone, Utc};
 use std::{
     collections::{hash_map::Entry, HashMap},
-    convert::TryFrom,
+    convert::{TryFrom, TryInto},
     io::{BufRead, BufWriter, Seek, Write},
     time::Instant,
 };
@@ -64,14 +65,10 @@ pub async fn reindex_channel(
             for day in days {
                 info!("Reindexing channel {channel_id} date {year}-{month}-{day}");
 
-                let channel_file_path = get_channel_path(
-                    &app.logs.root_path,
-                    channel_id,
-                    &year.to_string(),
-                    &month.to_string(),
-                    &day.to_string(),
-                    false,
-                );
+                let date = Utc.ymd((*year).try_into().unwrap(), *month, *day);
+
+                let channel_file_path =
+                    get_channel_path(&app.logs.root_path, channel_id, date, false);
 
                 let file = File::open(channel_file_path).context("could not open channel file")?;
                 let mut reader = BufReader::new(file);
