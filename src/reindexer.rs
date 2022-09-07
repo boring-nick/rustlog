@@ -7,7 +7,6 @@ use crate::{
     },
 };
 use anyhow::Context;
-use futures::future::try_join_all;
 use std::{
     collections::{hash_map::Entry, HashMap},
     convert::TryFrom,
@@ -18,7 +17,6 @@ use std::{
     fs::{self, File, OpenOptions},
     io::BufReader,
 };
-use tokio::task::spawn_blocking;
 use tracing::{debug, error, info, trace, warn};
 use twitch_irc::message::{IRCMessage, ServerMessage};
 
@@ -166,13 +164,9 @@ pub async fn reindex_channel(
                     line.clear();
                 }
 
-                try_join_all(
-                    user_writers
-                        .into_values()
-                        .map(|mut writer| spawn_blocking(move || writer.flush())),
-                )
-                .await
-                .context("Could not flush users")?;
+                for mut writer in user_writers.into_values() {
+                    writer.flush()?;
+                }
             }
         }
     }
