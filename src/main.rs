@@ -1,4 +1,5 @@
 mod app;
+mod args;
 mod bot;
 mod config;
 mod error;
@@ -9,15 +10,16 @@ mod web;
 
 pub type Result<T> = std::result::Result<T, error::Error>;
 
-use anyhow::anyhow;
 use app::App;
-use clap::{Parser, Subcommand};
+use args::{Args, Command};
+use clap::Parser;
 use config::Config;
 use dashmap::DashMap;
 use logs::{
     index::{self, Index},
     Logs,
 };
+use migrator::Migrator;
 use std::{path::PathBuf, sync::Arc};
 use tokio::{
     fs::{read_dir, File},
@@ -57,7 +59,7 @@ async fn main() -> anyhow::Result<()> {
             reindex(config, logs, channel_list).await
         }
         Some(Command::PrintIndex { file_path }) => print_index(file_path).await,
-        Some(Command::Migrate(options)) => migrate(config, logs, options).await,
+        Some(Command::Migrate { source_dir }) => migrate(config, logs, source_dir).await,
     }
 }
 
@@ -112,11 +114,7 @@ async fn print_index(file_path: PathBuf) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn migrate(config: Config, logs: Logs, options: MigrateOptions) -> anyhow::Result<()> {
-    if !options.delete_redundant_logs && !options.keep_redundat_logs {
-        return Err(anyhow!("Neither `--delete-redundant-logs` or `--keep-redundant-logs` is specified. See `rustlog migrate --help` for more information."));
-    }
-
+async fn migrate(config: Config, logs: Logs, source_logs_path: String) -> anyhow::Result<()> {
     let helix_client: HelixClient<reqwest::Client> = HelixClient::default();
     let token = generate_token(&config).await?;
 
@@ -128,10 +126,8 @@ async fn migrate(config: Config, logs: Logs, options: MigrateOptions) -> anyhow:
         config: Arc::new(config),
     };
 
-    let mut channels = Vec::new();
-    populate_channel_list(&mut channels, &app).await?;
-
-    migrator::run(&app, &channels, options.delete_redundant_logs).await
+    let migrator = Migrator::new(app, &source_logs_path).await?;
+    migrator.run().await
 }
 
 async fn generate_token(config: &Config) -> anyhow::Result<AppAccessToken> {
@@ -162,46 +158,6 @@ async fn populate_channel_list(channels: &mut Vec<String>, app: &App<'_>) -> any
                 channels.push(channel);
             }
         }
-    } else {
-        for channel in channels.iter() {
-            if !app.config.channels.read().unwrap().contains(channel) {
-                return Err(anyhow!("unknown channel: {channel}"));
-            }
-        }
-        info!("Reindexing channels: {channels:?}");
     }
     Ok(())
-}
-
-#[derive(Parser)]
-#[clap(author, version, about, long_about = None)]
-struct Args {
-    #[clap(subcommand)]
-    subcommand: Option<Command>,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    /// Rebuild user indexes
-    Reindex {
-        /// Comma-separated list of channels to reindex
-        #[clap(short, long, value_parser)]
-        channels: Option<String>,
-    },
-    /// Print index
-    PrintIndex { file_path: PathBuf },
-    /// Migrate existing justlog logs
-    Migrate(MigrateOptions),
-}
-
-#[derive(Parser)]
-struct MigrateOptions {
-    /// Deletes unneeded user logs after migration to save space.
-    /// WARNING: this will make logs incompatible with justlog!
-    #[clap(long, value_parser, default_value = "false")]
-    pub delete_redundant_logs: bool,
-    /// Keep user logs which are not used by rustlog.
-    /// Use this if you want your logs to still work with justlog.
-    #[clap(long, value_parser, default_value = "false")]
-    pub keep_redundat_logs: bool,
 }

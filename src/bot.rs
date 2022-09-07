@@ -66,28 +66,25 @@ impl<'a> Bot<'a> {
     ) -> anyhow::Result<()> {
         self.write_message(&msg).await?;
 
-        match &msg {
-            ServerMessage::Privmsg(privmsg) => {
-                trace!("Processing message {}", privmsg.message_text);
-                if let Some(cmd) = privmsg.message_text.strip_prefix(COMMAND_PREFIX) {
-                    if self.app.config.admins.contains(&privmsg.sender.login) {
-                        self.handle_command(cmd, client).await?;
-                    } else {
-                        info!(
-                            "User {} is not an admin to use commands",
-                            privmsg.sender.login
-                        );
-                    }
+        if let ServerMessage::Privmsg(privmsg) = &msg {
+            trace!("Processing message {}", privmsg.message_text);
+            if let Some(cmd) = privmsg.message_text.strip_prefix(COMMAND_PREFIX) {
+                if self.app.config.admins.contains(&privmsg.sender.login) {
+                    self.handle_command(cmd, client).await?;
+                } else {
+                    info!(
+                        "User {} is not an admin to use commands",
+                        privmsg.sender.login
+                    );
                 }
             }
-            _ => (),
         }
 
         Ok(())
     }
 
     async fn write_message(&self, msg: &ServerMessage) -> anyhow::Result<()> {
-        if let Some((channel, maybe_user)) = extract_channel_and_user(&msg) {
+        if let Some((channel, maybe_user)) = extract_channel_and_user(msg) {
             let channel_id = match channel {
                 ChannelIdentifier::Channel(name) => self.app.get_user_id_by_name(name).await?,
                 ChannelIdentifier::ChannelId(id) => id.to_owned(),
@@ -147,10 +144,7 @@ impl<'a> Bot<'a> {
 
         let channels = self
             .app
-            .get_users(
-                vec![],
-                channels.into_iter().map(ToString::to_string).collect(),
-            )
+            .get_users(vec![], channels.iter().map(ToString::to_string).collect())
             .await?;
 
         {
