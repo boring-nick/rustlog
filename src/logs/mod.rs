@@ -2,11 +2,13 @@ pub mod index;
 pub mod schema;
 
 use self::schema::{
-    ChannelIdentifier, ChannelLogDate, ChannelLogDateMap, UserIdentifier, UserLogDateMap,
+    ChannelIdentifier, ChannelLogDate, ChannelLogDateMap, UserIdentifier, UserLogDate,
+    UserLogDateMap,
 };
 use crate::{error::Error, logs::index::Index, Result};
 use chrono::{Date, Datelike, TimeZone, Utc};
 use itertools::Itertools;
+use rand::{rngs::StdRng, seq::IteratorRandom, SeedableRng};
 use std::{
     collections::{BTreeMap, HashMap},
     io::SeekFrom,
@@ -145,7 +147,12 @@ impl Logs {
         channel_id: &str,
         include_compressed: bool,
     ) -> Result<ChannelLogDateMap> {
+        debug!("Gettings logs for channel {channel_id}");
         let channel_path = self.root_path.join(channel_id);
+        if !channel_path.exists() {
+            return Err(Error::NotFound);
+        }
+
         let mut channel_dir = read_dir(channel_path).await?;
 
         let mut years = BTreeMap::new();
@@ -284,10 +291,9 @@ impl Logs {
         &self,
         channel_id: &str,
         user_id: &str,
-        year: &str,
-        month: &str,
+        log_date: UserLogDate,
     ) -> Result<Vec<String>> {
-        let index_path = get_user_index_path(&self.root_path, channel_id, user_id, year, month);
+        let index_path = get_user_index_path(&self.root_path, channel_id, user_id, log_date);
         trace!("Reading user index from {index_path:?}");
 
         if !index_path.exists() {
@@ -313,7 +319,7 @@ impl Logs {
             let reader = if let Some(reader) = readers.get_mut(&index.day) {
                 reader
             } else {
-                let date = Utc.ymd(year.parse()?, month.parse()?, index.day);
+                let date = Utc.ymd(log_date.year.try_into().unwrap(), log_date.month, index.day);
 
                 let channel_file_path = get_channel_path(&self.root_path, channel_id, date, false);
                 debug!("Creating new reader for {channel_file_path:?}");
@@ -333,6 +339,53 @@ impl Logs {
         }
 
         Ok(lines)
+    }
+
+    pub async fn random_channel_line(&self, channel_id: &str) -> Result<String> {
+        let mut rng = StdRng::from_entropy();
+
+        let log_date = self
+            .get_available_channel_logs(channel_id, false)
+            .await?
+            .into_iter()
+            .flat_map(|(year, months)| {
+                months.into_iter().flat_map(move |(month, days)| {
+                    days.into_iter()
+                        .map(move |day| ChannelLogDate { year, month, day })
+                })
+            })
+            .choose(&mut rng)
+            .ok_or(Error::NotFound)?;
+
+        Ok(self
+            .read_channel(channel_id, log_date)
+            .await?
+            .into_iter()
+            .choose(&mut rng)
+            .ok_or(Error::NotFound)?)
+    }
+
+    pub async fn random_user_line(&self, channel_id: &str, user_id: &str) -> Result<String> {
+        let mut rng = StdRng::from_entropy();
+
+        let date = self
+            .get_available_user_logs(channel_id, user_id)
+            .await?
+            .into_iter()
+            .flat_map(|(year, months)| {
+                months
+                    .into_iter()
+                    .map(move |month| UserLogDate { year, month })
+            })
+            .choose(&mut rng)
+            .ok_or(Error::NotFound)?;
+
+        Ok(self
+            .read_user(channel_id, user_id, date)
+            .await?
+            .into_iter()
+            .choose(&mut rng)
+            .ok_or(Error::NotFound)?)
     }
 }
 
@@ -375,13 +428,12 @@ pub fn get_user_index_path(
     root_path: &Path,
     channel_id: &str,
     user_id: &str,
-    year: &str,
-    month: &str,
+    UserLogDate { year, month }: UserLogDate,
 ) -> PathBuf {
     root_path
         .join(channel_id)
-        .join(year)
-        .join(month)
+        .join(&year.to_string())
+        .join(&month.to_string())
         .join("users")
         .join(format!("{user_id}.indexes"))
 }

@@ -8,7 +8,7 @@ use super::{
 use crate::{
     app::App,
     error::Error,
-    logs::schema::{ChannelLogDate, Message},
+    logs::schema::{ChannelLogDate, UserLogDate},
     Result,
 };
 use axum::{
@@ -60,21 +60,13 @@ pub async fn get_channel_logs(
     let response_type = if logs_params.raw {
         LogsResponseType::Raw(lines)
     } else {
-        let messages = lines
-            .into_iter()
-            .filter_map(|line| Message::parse_from_raw_irc(line).ok())
-            .collect();
-
         let logs_type = if logs_params.json {
             ProcessedLogsType::Json
         } else {
             ProcessedLogsType::Text
         };
 
-        LogsResponseType::Processed(ProcessedLogs {
-            messages,
-            logs_type,
-        })
+        LogsResponseType::Processed(ProcessedLogs::parse_raw(lines, logs_type))
     };
 
     Ok(LogsResponse {
@@ -110,20 +102,16 @@ pub async fn get_user_logs_by_id(
 
 async fn get_user_logs(
     app: Extension<App<'_>>,
-    Path(UserLogsPath {
-        channel_id_type,
-        channel,
-        user: _,
-        year,
-        month,
-    }): Path<UserLogsPath>,
+    Path(user_logs_path): Path<UserLogsPath>,
     Query(logs_params): Query<LogsParams>,
     user_id: String,
 ) -> Result<LogsResponse> {
-    let channel_id = match channel_id_type {
+    let log_date = UserLogDate::try_from(&user_logs_path)?;
+
+    let channel_id = match user_logs_path.channel_id_type {
         ChannelIdType::Name => {
             let (id, _) = app
-                .get_users(vec![], vec![channel])
+                .get_users(vec![], vec![user_logs_path.channel])
                 .await?
                 .into_iter()
                 .next()
@@ -131,32 +119,21 @@ async fn get_user_logs(
             id
         }
 
-        ChannelIdType::Id => channel,
+        ChannelIdType::Id => user_logs_path.channel,
     };
 
-    let lines = app
-        .logs
-        .read_user(&channel_id, &user_id, &year, &month)
-        .await?;
+    let lines = app.logs.read_user(&channel_id, &user_id, log_date).await?;
 
     let response_type = if logs_params.raw {
         LogsResponseType::Raw(lines)
     } else {
-        let messages = lines
-            .into_iter()
-            .filter_map(|line| Message::parse_from_raw_irc(line).ok())
-            .collect();
-
         let logs_type = if logs_params.json {
             ProcessedLogsType::Json
         } else {
             ProcessedLogsType::Text
         };
 
-        LogsResponseType::Processed(ProcessedLogs {
-            messages,
-            logs_type,
-        })
+        LogsResponseType::Processed(ProcessedLogs::parse_raw(lines, logs_type))
     };
 
     Ok(LogsResponse {
@@ -228,4 +205,85 @@ fn redirect_to_latest_user_logs(
 
     let new_uri = format!("/{channel_id_type}/{channel}/{user_id_type}/{user}/{year}/{month}");
     Redirect::to(&new_uri)
+}
+
+pub async fn random_channel_line(
+    app: Extension<App<'_>>,
+    Path((channel_id_type, channel)): Path<(ChannelIdType, String)>,
+    Query(LogsParams { json, raw, reverse }): Query<LogsParams>,
+) -> Result<LogsResponse> {
+    let channel_id = match channel_id_type {
+        ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
+        ChannelIdType::Id => channel,
+    };
+
+    let random_line = app.logs.random_channel_line(&channel_id).await?;
+    let lines = vec![random_line];
+
+    let response_type = if raw {
+        LogsResponseType::Raw(lines)
+    } else {
+        let logs_type = if json {
+            ProcessedLogsType::Json
+        } else {
+            ProcessedLogsType::Text
+        };
+
+        LogsResponseType::Processed(ProcessedLogs::parse_raw(lines, logs_type))
+    };
+
+    Ok(LogsResponse {
+        response_type,
+        reverse,
+    })
+}
+
+pub async fn random_user_line_by_name(
+    app: Extension<App<'_>>,
+    Path((channel_id_type, channel, user_name)): Path<(ChannelIdType, String, String)>,
+    query: Query<LogsParams>,
+) -> Result<LogsResponse> {
+    let user_id = app.get_user_id_by_name(&user_name).await?;
+    random_user_line(app, channel_id_type, channel, user_id, query).await
+}
+
+pub async fn random_user_line_by_id(
+    app: Extension<App<'_>>,
+    Path((channel_id_type, channel, user_id)): Path<(ChannelIdType, String, String)>,
+    query: Query<LogsParams>,
+) -> Result<LogsResponse> {
+    random_user_line(app, channel_id_type, channel, user_id, query).await
+}
+
+pub async fn random_user_line(
+    app: Extension<App<'_>>,
+    channel_id_type: ChannelIdType,
+    channel: String,
+    user_id: String,
+    Query(LogsParams { json, raw, reverse }): Query<LogsParams>,
+) -> Result<LogsResponse> {
+    let channel_id = match channel_id_type {
+        ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
+        ChannelIdType::Id => channel,
+    };
+
+    let random_line = app.logs.random_user_line(&channel_id, &user_id).await?;
+    let lines = vec![random_line];
+
+    let response_type = if raw {
+        LogsResponseType::Raw(lines)
+    } else {
+        let logs_type = if json {
+            ProcessedLogsType::Json
+        } else {
+            ProcessedLogsType::Text
+        };
+
+        LogsResponseType::Processed(ProcessedLogs::parse_raw(lines, logs_type))
+    };
+
+    Ok(LogsResponse {
+        response_type,
+        reverse,
+    })
 }

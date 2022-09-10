@@ -47,6 +47,18 @@ pub async fn run(app: App<'static>) {
             "/:channel_id_type/:channel/userid/:user/:year/:month",
             get(handlers::get_user_logs_by_id),
         )
+        .route(
+            "/:channel_id_type/:channel/random",
+            get(handlers::random_channel_line),
+        )
+        .route(
+            "/:channel_id_type/:channel/userid/:user/random",
+            get(handlers::random_user_line_by_id),
+        )
+        .route(
+            "/:channel_id_type/:channel/user/:user/random",
+            get(handlers::random_user_line_by_name),
+        )
         .layer(Extension(app))
         .layer(
             TraceLayer::new_for_http()

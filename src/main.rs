@@ -44,7 +44,6 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = Config::load().await?;
-
     let logs = Logs::new(&config.logs_directory).await?;
 
     let args = Args::parse();
