@@ -1,4 +1,4 @@
-use crate::logs::schema::ChannelLogDate;
+use crate::logs::schema::{ChannelLogDate, UserLogDate};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::num::ParseIntError;
 
@@ -58,6 +58,17 @@ where
     match opt.as_deref() {
         Some("1") | Some("true") | Some("") => Ok(true),
         _ => Ok(false),
+    }
+}
+
+impl TryFrom<&UserLogsPath> for UserLogDate {
+    type Error = ParseIntError;
+
+    fn try_from(params: &UserLogsPath) -> Result<Self, Self::Error> {
+        Ok(Self {
+            year: params.year.parse()?,
+            month: params.month.parse()?,
+        })
     }
 }
 
