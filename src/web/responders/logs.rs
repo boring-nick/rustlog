@@ -21,6 +21,20 @@ pub struct ProcessedLogs {
     pub logs_type: ProcessedLogsType,
 }
 
+impl ProcessedLogs {
+    pub fn parse_raw(lines: Vec<String>, logs_type: ProcessedLogsType) -> Self {
+        let messages = lines
+            .into_iter()
+            .filter_map(|line| Message::parse_from_raw_irc(line).ok())
+            .collect();
+
+        Self {
+            messages,
+            logs_type,
+        }
+    }
+}
+
 pub enum ProcessedLogsType {
     Text,
     Json,

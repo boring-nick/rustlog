@@ -1270,6 +1270,7 @@ dependencies = [
  "itertools",
  "mime_guess",
  "pretty_assertions",
+ "rand",
  "reqwest",
  "rust-embed",
  "serde",

@@ -21,6 +21,12 @@ pub struct ChannelLogDate {
     pub day: u32,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+pub struct UserLogDate {
+    pub year: u32,
+    pub month: u32,
+}
+
 impl Display for ChannelLogDate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}-{}-{}", self.year, self.month, self.day)
