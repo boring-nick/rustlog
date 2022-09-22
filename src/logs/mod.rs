@@ -1,10 +1,7 @@
 pub mod index;
 pub mod schema;
 
-use self::schema::{
-    ChannelIdentifier, ChannelLogDate, ChannelLogDateMap, UserIdentifier, UserLogDate,
-    UserLogDateMap,
-};
+use self::schema::{ChannelLogDate, ChannelLogDateMap, UserLogDate, UserLogDateMap};
 use crate::{error::Error, logs::index::Index, Result};
 use chrono::{Date, Datelike, TimeZone, Utc};
 use itertools::Itertools;
@@ -20,7 +17,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter},
 };
 use tracing::{debug, trace};
-use twitch_irc::message::{AsRawIRC, ClearChatAction, IRCMessage, ServerMessage};
+use twitch_irc::message::IRCMessage;
 
 pub const COMPRESSED_CHANNEL_FILE: &str = "channel.txt.gz";
 pub const UNCOMPRESSED_CHANNEL_FILE: &str = "channel.txt";
@@ -62,11 +59,11 @@ impl Logs {
 
     pub async fn write_server_message(
         &self,
-        msg: &ServerMessage,
+        raw_msg: String,
         channel_id: &str,
         maybe_user_id: Option<&str>,
     ) -> Result<()> {
-        trace!("Logging message {msg:?}");
+        trace!("Logging message {raw_msg:?}");
 
         let today = Utc::today();
 
@@ -87,7 +84,6 @@ impl Logs {
 
         let offset = channel_writer.seek(SeekFrom::End(0)).await?;
 
-        let raw_msg = msg.as_raw_irc();
         let msg_bytes = raw_msg.as_bytes();
 
         channel_writer.write_all(msg_bytes).await?;
@@ -448,50 +444,4 @@ pub fn extract_channel_and_user_from_raw(
             let user_id = tags.get("user-id").and_then(|user_id| user_id.as_deref());
             (channel_id, user_id)
         })
-}
-
-pub fn extract_channel_and_user(
-    server_msg: &ServerMessage,
-) -> Option<(ChannelIdentifier, Option<UserIdentifier>)> {
-    match server_msg {
-        ServerMessage::Privmsg(privmsg) => Some((
-            ChannelIdentifier::ChannelId(&privmsg.channel_id),
-            Some(UserIdentifier::UserId(&privmsg.sender.id)),
-        )),
-        ServerMessage::ClearChat(clear_chat) => {
-            let channel_id = &clear_chat.channel_id;
-            let user_id = match &clear_chat.action {
-                ClearChatAction::UserBanned {
-                    user_login: _,
-                    user_id,
-                } => Some(user_id),
-                ClearChatAction::UserTimedOut {
-                    user_login: _,
-                    user_id,
-                    timeout_length: _,
-                } => Some(user_id),
-                ClearChatAction::ChatCleared => None,
-            };
-
-            Some((
-                ChannelIdentifier::ChannelId(channel_id),
-                user_id.map(|id| UserIdentifier::UserId(id)),
-            ))
-        }
-        ServerMessage::ClearMsg(clearmsg) => Some((
-            ChannelIdentifier::Channel(&clearmsg.channel_login),
-            Some(UserIdentifier::User(&clearmsg.sender_login)),
-        )),
-        ServerMessage::HostTarget(host_target) => {
-            Some((ChannelIdentifier::Channel(&host_target.channel_login), None))
-        }
-        /*ServerMessage::RoomState(room_state) => {
-            Some((ChannelIdentifier::ChannelId(&room_state.channel_id), None))
-        }*/
-        ServerMessage::UserNotice(user_notice) => Some((
-            ChannelIdentifier::ChannelId(&user_notice.channel_id),
-            Some(UserIdentifier::UserId(&user_notice.sender.id)),
-        )),
-        _ => None,
-    }
 }
