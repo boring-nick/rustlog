@@ -1,15 +1,10 @@
-use crate::{
-    app::App,
-    logs::{
-        extract_channel_and_user,
-        schema::{ChannelIdentifier, UserIdentifier},
-    },
-};
+use crate::{app::App, logs::extract_channel_and_user_from_raw};
 use anyhow::anyhow;
 use tracing::{debug, error, info, trace};
 use twitch_irc::{
-    login::LoginCredentials, message::ServerMessage, ClientConfig, SecureTCPTransport,
-    TwitchIRCClient,
+    login::LoginCredentials,
+    message::{AsRawIRC, IRCMessage, ServerMessage},
+    ClientConfig, SecureTCPTransport, TwitchIRCClient,
 };
 
 type TwitchClient<C> = TwitchIRCClient<SecureTCPTransport, C>;
@@ -64,8 +59,6 @@ impl<'a> Bot<'a> {
         msg: ServerMessage,
         client: &TwitchClient<C>,
     ) -> anyhow::Result<()> {
-        self.write_message(&msg).await?;
-
         if let ServerMessage::Privmsg(privmsg) = &msg {
             trace!("Processing message {}", privmsg.message_text);
             if let Some(cmd) = privmsg.message_text.strip_prefix(COMMAND_PREFIX) {
@@ -80,29 +73,21 @@ impl<'a> Bot<'a> {
             }
         }
 
+        self.write_message(msg).await?;
+
         Ok(())
     }
 
-    async fn write_message(&self, msg: &ServerMessage) -> anyhow::Result<()> {
-        if let Some((channel, maybe_user)) = extract_channel_and_user(msg) {
-            let channel_id = match channel {
-                ChannelIdentifier::Channel(name) => self.app.get_user_id_by_name(name).await?,
-                ChannelIdentifier::ChannelId(id) => id.to_owned(),
-            };
-            let maybe_user_id = if let Some(user) = maybe_user {
-                Some(match user {
-                    UserIdentifier::User(name) => self.app.get_user_id_by_name(name).await?,
-                    UserIdentifier::UserId(id) => id.to_owned(),
-                })
-            } else {
-                None
-            };
+    async fn write_message(&self, msg: ServerMessage) -> anyhow::Result<()> {
+        let irc_message = IRCMessage::from(msg);
 
+        if let Some((channel_id, maybe_user_id)) = extract_channel_and_user_from_raw(&irc_message) {
             self.app
                 .logs
-                .write_server_message(msg, &channel_id, maybe_user_id.as_deref())
+                .write_server_message(irc_message.as_raw_irc(), &channel_id, maybe_user_id)
                 .await?;
         }
+
         Ok(())
     }
 
@@ -110,7 +95,7 @@ impl<'a> Bot<'a> {
         &self,
         cmd: &str,
         client: &TwitchClient<C>,
-    ) -> anyhow::Result<String> {
+    ) -> anyhow::Result<()> {
         debug!("Processing command {cmd}");
         let mut split = cmd.split_whitespace();
         if let Some(action) = split.next() {
@@ -129,7 +114,7 @@ impl<'a> Bot<'a> {
             }
         }
 
-        Ok(String::new())
+        Ok(())
     }
 
     async fn update_channels<C: LoginCredentials>(

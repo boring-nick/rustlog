@@ -1,16 +1,15 @@
 use crate::{
     app::App,
     logs::{
-        extract_channel_and_user, get_channel_path, get_users_path,
-        index::Index,
-        schema::{ChannelLogDateMap, UserIdentifier},
+        extract_channel_and_user_from_raw, get_channel_path, get_users_path, index::Index,
+        schema::ChannelLogDateMap,
     },
 };
 use anyhow::Context;
 use chrono::{TimeZone, Utc};
 use std::{
     collections::{hash_map::Entry, HashMap},
-    convert::{TryFrom, TryInto},
+    convert::TryInto,
     io::{BufRead, BufWriter, Seek, Write},
     time::Instant,
 };
@@ -19,7 +18,7 @@ use std::{
     io::BufReader,
 };
 use tracing::{debug, error, info, trace, warn};
-use twitch_irc::message::{IRCMessage, ServerMessage};
+use twitch_irc::message::IRCMessage;
 
 pub async fn run(app: App<'_>, channels: &[String]) -> anyhow::Result<()> {
     info!("Reindexing all channels");
@@ -87,33 +86,9 @@ pub async fn reindex_channel(
 
                     match IRCMessage::parse(line.trim_end()) {
                         Ok(irc_message) => {
-                            let maybe_user_id =
-                                if let Some(user_id) = irc_message.tags.0.get("user-id") {
-                                    user_id.clone()
-                                } else {
-                                    match ServerMessage::try_from(irc_message) {
-                                        Ok(server_msg) => {
-                                            if let Some((_, Some(user))) =
-                                                extract_channel_and_user(&server_msg)
-                                            {
-                                                Some(match user {
-                                                    UserIdentifier::UserId(id) => id.to_owned(),
-                                                    UserIdentifier::User(name) => {
-                                                        app.get_user_id_by_name(name).await?
-                                                    }
-                                                })
-                                            } else {
-                                                None
-                                            }
-                                        }
-                                        Err(err) => {
-                                            debug!("{err}");
-                                            None
-                                        }
-                                    }
-                                };
-
-                            if let Some(user_id) = maybe_user_id {
+                            if let Some((_, Some(user_id))) =
+                                extract_channel_and_user_from_raw(&irc_message)
+                            {
                                 let index = Index {
                                     day: *day,
                                     offset,
@@ -122,7 +97,7 @@ pub async fn reindex_channel(
 
                                 debug!("Writing index {index:?} for {user_id}");
 
-                                let user_writer = match user_writers.entry(user_id.clone()) {
+                                let user_writer = match user_writers.entry(user_id.to_owned()) {
                                     Entry::Occupied(occupied) => occupied.into_mut(),
                                     Entry::Vacant(vacant) => {
                                         let users_folder = get_users_path(
