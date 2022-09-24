@@ -1,9 +1,14 @@
 pub mod index;
 pub mod schema;
 
-use self::schema::{ChannelLogDate, ChannelLogDateMap, UserLogDate, UserLogDateMap};
+use self::schema::{ChannelLogDate, ChannelLogDateMap, OpenWriter, UserLogDate, UserLogDateMap};
 use crate::{error::Error, logs::index::Index, Result};
+use anyhow::Context;
 use chrono::{Date, Datelike, TimeZone, Utc};
+use dashmap::{
+    mapref::{entry::Entry, one::RefMut},
+    DashMap,
+};
 use itertools::Itertools;
 use rand::{rngs::StdRng, seq::IteratorRandom, SeedableRng};
 use std::{
@@ -25,6 +30,7 @@ pub const UNCOMPRESSED_CHANNEL_FILE: &str = "channel.txt";
 #[derive(Debug, Clone)]
 pub struct Logs {
     pub root_path: Arc<PathBuf>,
+    channel_file_handles: Arc<DashMap<String, OpenWriter>>,
 }
 
 impl Logs {
@@ -37,6 +43,7 @@ impl Logs {
 
         Ok(Self {
             root_path: Arc::new(root_folder),
+            channel_file_handles: Arc::new(DashMap::new()),
         })
     }
 
@@ -57,7 +64,7 @@ impl Logs {
         Ok(channels)
     }
 
-    pub async fn write_server_message(
+    pub async fn write_message(
         &self,
         raw_msg: String,
         channel_id: &str,
@@ -72,15 +79,8 @@ impl Logs {
             fs::create_dir_all(&day_folder).await?;
         }
 
-        let channel_file_path = day_folder.join("channel.txt");
-        trace!("Opening channel file at {channel_file_path:?}");
-
-        let channel_file = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(channel_file_path)
-            .await?;
-        let mut channel_writer = BufWriter::new(channel_file);
+        let mut writer_entry = self.get_channel_writer(channel_id.to_owned()).await?;
+        let channel_writer = &mut writer_entry.writer;
 
         let offset = channel_writer.seek(SeekFrom::End(0)).await?;
 
@@ -383,6 +383,46 @@ impl Logs {
             .choose(&mut rng)
             .ok_or(Error::NotFound)?)
     }
+
+    /// Gets a write handle for a given channel for today, creates/opens one if it doesn't exist
+    async fn get_channel_writer(
+        &self,
+        channel_id: String,
+    ) -> anyhow::Result<RefMut<String, OpenWriter>> {
+        let today = Utc::today();
+        let path = get_channel_path(&self.root_path, &channel_id, today, false);
+
+        match self.channel_file_handles.entry(channel_id) {
+            Entry::Occupied(mut occupied) => {
+                if occupied.get().date == today {
+                    Ok(occupied.into_ref())
+                } else {
+                    debug!("Channel writer handle at {path:?} is outdated, replacing");
+                    let writer = create_writer(path, today).await?;
+                    occupied.insert(writer);
+                    Ok(occupied.into_ref())
+                }
+            }
+            Entry::Vacant(vacant) => {
+                debug!("Opening new channel writer at {path:?}");
+                let writer = create_writer(path, today).await?;
+                Ok(vacant.insert(writer))
+            }
+        }
+    }
+}
+
+async fn create_writer(path: PathBuf, date: Date<Utc>) -> anyhow::Result<OpenWriter> {
+    fs::create_dir_all(path.parent().context("given path has no parent")?).await?;
+
+    let file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(path)
+        .await?;
+    let writer = BufWriter::new(file);
+
+    Ok(OpenWriter { writer, date })
 }
 
 pub fn get_day_path(root_path: &Path, channel_id: &str, date: Date<Utc>) -> PathBuf {
@@ -399,12 +439,7 @@ pub fn get_channel_path(
     date: Date<Utc>,
     compressed: bool,
 ) -> PathBuf {
-    let base_path = root_path
-        .join(channel_id)
-        .join(&date.year().to_string())
-        .join(&date.month().to_string())
-        .join(&date.day().to_string());
-
+    let base_path = get_day_path(root_path, channel_id, date);
     if compressed {
         base_path.join(COMPRESSED_CHANNEL_FILE)
     } else {

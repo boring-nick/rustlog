@@ -84,7 +84,7 @@ impl<'a> Bot<'a> {
         if let Some((channel_id, maybe_user_id)) = extract_channel_and_user_from_raw(&irc_message) {
             self.app
                 .logs
-                .write_server_message(irc_message.as_raw_irc(), &channel_id, maybe_user_id)
+                .write_message(irc_message.as_raw_irc(), &channel_id, maybe_user_id)
                 .await?;
         }
 
