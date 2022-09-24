@@ -4,7 +4,7 @@ use axum::{
     response::Response,
 };
 use std::time::Duration;
-use tracing::{info, info_span, Span};
+use tracing::{info_span, Span};
 
 pub fn make_span_with(request: &Request<Body>) -> Span {
     let method = request.method().to_string();
@@ -24,5 +24,5 @@ pub fn on_response(response: &Response<BoxBody>, latency: Duration, span: &Span)
     span.record("http.status", &status.as_str());
     span.record("http.latency", &ms.to_string().as_str());
 
-    info!("HTTP response {status} processed in {ms}ms");
+    // info!("HTTP response {status} processed in {ms}ms");
 }

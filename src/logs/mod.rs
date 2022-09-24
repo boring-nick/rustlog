@@ -12,16 +12,16 @@ use dashmap::{
 use itertools::Itertools;
 use rand::{rngs::StdRng, seq::IteratorRandom, SeedableRng};
 use std::{
-    collections::{BTreeMap, HashMap},
-    io::SeekFrom,
+    collections::BTreeMap,
+    io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     sync::Arc,
 };
 use tokio::{
     fs::{self, read_dir, File, OpenOptions},
-    io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncSeekExt, AsyncWriteExt, BufWriter},
 };
-use tracing::{debug, trace};
+use tracing::{debug, error, trace};
 use twitch_irc::message::IRCMessage;
 
 pub const COMPRESSED_CHANNEL_FILE: &str = "channel.txt.gz";
@@ -274,11 +274,16 @@ impl Logs {
         let channel_file_path = get_channel_path(&self.root_path, channel_id, date, false);
         trace!("Reading logs from {channel_file_path:?}");
 
-        let mut file = File::open(channel_file_path).await?;
-        let file_len = file.metadata().await?.len();
+        let file = File::open(channel_file_path).await?;
+        let mut file = file.into_std().await;
 
-        let mut contents = String::with_capacity(file_len.try_into().unwrap());
-        file.read_to_string(&mut contents).await?;
+        let contents = tokio::task::spawn_blocking(move || {
+            let mut contents = String::new();
+            file.read_to_string(&mut contents)?;
+            Result::Ok(contents)
+        })
+        .await
+        .expect("failed to join task")?;
 
         Ok(contents.lines().map(str::to_owned).collect())
     }
@@ -296,42 +301,59 @@ impl Logs {
             return Err(Error::NotFound);
         }
 
-        let mut file = File::open(index_path).await?;
-        let metadata = file.metadata().await?;
-        let file_len = metadata.len().try_into().unwrap_or(0);
+        let file = File::open(index_path).await?;
+        let mut file = file.into_std().await;
 
-        let mut buf = Vec::with_capacity(file_len);
-        file.read_to_end(&mut buf).await?;
+        let buf = tokio::task::spawn_blocking(move || {
+            let mut buf = Vec::new();
+            file.read_to_end(&mut buf)?;
+            Result::Ok(buf)
+        })
+        .await
+        .expect("failed to join task")?;
 
         let indexes: Vec<Index> = buf
             .chunks_exact(index::SIZE)
             .map(Index::from_bytes)
             .try_collect()?;
 
-        let mut lines = Vec::new();
-        let mut readers = HashMap::new();
+        let mut indexes_by_days = BTreeMap::new();
 
         for index in indexes {
-            let reader = if let Some(reader) = readers.get_mut(&index.day) {
-                reader
-            } else {
-                let date = Utc.ymd(log_date.year.try_into().unwrap(), log_date.month, index.day);
+            let day_indexes = indexes_by_days.entry(index.day).or_insert_with(Vec::new);
+            day_indexes.push(index);
+        }
 
-                let channel_file_path = get_channel_path(&self.root_path, channel_id, date, false);
-                debug!("Creating new reader for {channel_file_path:?}");
-                let file = File::open(channel_file_path).await?;
-                let reader = BufReader::new(file);
+        let mut lines = Vec::new();
 
-                readers.entry(index.day).or_insert(reader)
-            };
+        for (day, indexes) in indexes_by_days.into_iter() {
+            let date = Utc.ymd(log_date.year.try_into().unwrap(), log_date.month, day);
+            let channel_file_path = get_channel_path(&self.root_path, channel_id, date, false);
 
-            reader.seek(SeekFrom::Start(index.offset)).await?;
-            let mut handle = reader.take(index.len as u64);
+            debug!("Creating reader for {channel_file_path:?}");
+            let file = File::open(channel_file_path).await?.into_std().await;
+            let mut reader = std::io::BufReader::new(file);
 
-            let mut buf = String::with_capacity(index.len as usize);
-            handle.read_to_string(&mut buf).await?;
+            let day_lines = tokio::task::spawn_blocking(move || {
+                let mut lines = Vec::new();
+                for index in indexes {
+                    reader.seek(SeekFrom::Start(index.offset))?;
 
-            lines.push(buf);
+                    let mut buf = vec![0; index.len as usize];
+                    reader.read_exact(&mut buf)?;
+
+                    let msg = String::from_utf8(buf).map_err(|err| {
+                        error!("Could not read message buffer: {err}");
+                        Error::Internal
+                    })?;
+                    lines.push(msg);
+                }
+                Result::Ok(lines)
+            })
+            .await
+            .expect("failed to join task")?;
+
+            lines.extend(day_lines)
         }
 
         Ok(lines)
