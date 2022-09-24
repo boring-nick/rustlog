@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use anyhow::Context;
+use chrono::Date;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
@@ -7,6 +8,8 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt::{Display, Write},
 };
+use tokio::fs::File;
+use tokio::io::BufWriter;
 use twitch_irc::message::{ClearChatAction, HostTargetAction, IRCMessage, ServerMessage};
 
 pub type ChannelLogDateMap = BTreeMap<u32, BTreeMap<u32, Vec<u32>>>;
@@ -220,17 +223,8 @@ impl Display for Message {
     }
 }
 
-/*impl ChannelLogDate {
-    pub fn from_map(map: ChannelLogDateMap) -> Vec<Self> {
-        let mut results = Vec::new();
-        for (year, months) in map {
-            for (month, days) in months {
-                for day in days {
-                    let log_date = ChannelLogDate { year, month, day };
-                    results.push(log_date);
-                }
-            }
-        }
-        results
-    }
-}*/
+#[derive(Debug)]
+pub(super) struct OpenWriter {
+    pub writer: BufWriter<File>,
+    pub date: Date<Utc>,
+}
