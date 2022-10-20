@@ -171,7 +171,7 @@ impl Logs {
                                     .file_name()
                                     .to_str()
                                     .and_then(|name| name.parse().ok())
-                                    .expect("invalid log entry name");
+                                    .expect("invalid log entry day name");
 
                                 let uncompressed_channel_file_path =
                                     day_entry.path().join(UNCOMPRESSED_CHANNEL_FILE);
@@ -201,7 +201,7 @@ impl Logs {
                             .file_name()
                             .to_str()
                             .and_then(|name| name.parse().ok())
-                            .expect("invalid log entry name");
+                            .expect("invalid log entry month name");
 
                         months.insert(month, days);
                     }
@@ -211,7 +211,7 @@ impl Logs {
                     .file_name()
                     .to_str()
                     .and_then(|name| name.parse().ok())
-                    .expect("invalid log entry name");
+                    .expect("invalid log entry year name");
 
                 years.insert(year, months);
             }
