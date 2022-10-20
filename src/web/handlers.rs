@@ -142,37 +142,57 @@ async fn get_user_logs(
     })
 }
 
-pub async fn list_available_user_logs(
+pub async fn list_available_logs(
     app: Extension<App<'_>>,
     Query(AvailableLogsParams { user, channel }): Query<AvailableLogsParams>,
 ) -> Result<Json<AvailableLogs>> {
-    let user_id = match user {
-        UserParam::UserId(id) => id,
-        UserParam::User(name) => app.get_user_id_by_name(&name).await?,
-    };
     let channel_id = match channel {
         ChannelParam::ChannelId(id) => id,
         ChannelParam::Channel(name) => app.get_user_id_by_name(&name).await?,
     };
 
-    let available_logs = app
-        .logs
-        .get_available_user_logs(&channel_id, &user_id)
-        .await?;
+    let available_logs = if let Some(user) = user {
+        let user_id = match user {
+            UserParam::UserId(id) => id,
+            UserParam::User(name) => app.get_user_id_by_name(&name).await?,
+        };
+        let user_logs = app
+            .logs
+            .get_available_user_logs(&channel_id, &user_id)
+            .await?;
 
-    let mut results = Vec::new();
+        let mut available_logs = Vec::new();
+        for (year, months) in user_logs {
+            let available_dates = months.into_iter().map(|month| AvailableLogDate {
+                year: year.to_string(),
+                month: month.to_string(),
+                day: None,
+            });
+            available_logs.extend(available_dates);
+        }
+        available_logs
+    } else {
+        let channel_logs = app
+            .logs
+            .get_available_channel_logs(&channel_id, false)
+            .await?;
 
-    for (year, months) in available_logs {
-        let available_dates = months.into_iter().map(|month| AvailableLogDate {
-            year: year.to_string(),
-            month: month.to_string(),
-        });
-        results.extend(available_dates);
-    }
+        let mut available_logs = Vec::new();
+        for (year, months) in channel_logs {
+            for (month, days) in months {
+                for day in days {
+                    available_logs.push(AvailableLogDate {
+                        year: year.to_string(),
+                        month: month.to_string(),
+                        day: Some(day.to_string()),
+                    });
+                }
+            }
+        }
+        available_logs
+    };
 
-    Ok(Json(AvailableLogs {
-        available_logs: results,
-    }))
+    Ok(Json(AvailableLogs { available_logs }))
 }
 
 pub async fn redirect_to_latest_channel_logs(

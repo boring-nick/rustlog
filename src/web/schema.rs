@@ -94,6 +94,7 @@ pub struct AvailableLogs {
 pub struct AvailableLogDate {
     pub year: String,
     pub month: String,
+    pub day: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -101,7 +102,7 @@ pub struct AvailableLogsParams {
     #[serde(flatten)]
     pub channel: ChannelParam,
     #[serde(flatten)]
-    pub user: UserParam,
+    pub user: Option<UserParam>,
 }
 
 #[derive(Deserialize)]

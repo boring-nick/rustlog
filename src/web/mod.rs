@@ -21,7 +21,7 @@ pub async fn run(app: App<'static>) {
 
     let app = Router::new()
         .route("/channels", get(handlers::get_channels))
-        .route("/list", get(handlers::list_available_user_logs))
+        .route("/list", get(handlers::list_available_logs))
         .route(
             "/:channel_id_type/:channel",
             get(handlers::redirect_to_latest_channel_logs),
