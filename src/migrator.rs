@@ -56,7 +56,7 @@ impl<'a> Migrator<'a> {
                     for day in days {
                         let date = Utc.ymd(year.try_into().unwrap(), month, day);
                         info!(
-                            "Migrating channel {channel_id} date {}",
+                            "Migrating channel {channel_id} date {date}",
                             date = date.format("%Y-%m-%d")
                         );
                         self.migrate_day(&channel_id, date)?;
