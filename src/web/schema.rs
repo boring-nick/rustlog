@@ -94,6 +94,7 @@ pub struct AvailableLogs {
 pub struct AvailableLogDate {
     pub year: String,
     pub month: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub day: Option<String>,
 }
 

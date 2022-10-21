@@ -1,11 +1,10 @@
-FROM node:latest as frontend
-RUN npm install -g pnpm
+FROM node:16-alpine as frontend
 WORKDIR /src/web
 COPY web .
-RUN pnpm install
-RUN pnpm run build
+RUN yarn install
+RUN yarn build
 
-FROM clux/muslrust:stable AS chef
+FROM docker.io/clux/muslrust:stable AS chef
 USER root
 RUN cargo install cargo-chef
 WORKDIR /app
@@ -18,10 +17,10 @@ FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --target x86_64-unknown-linux-musl --recipe-path recipe.json
 COPY . .
-COPY --from=frontend /src/web/build web/
+COPY --from=frontend /src/web web/
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
-FROM alpine AS runtime
+FROM docker.io/alpine AS runtime
 RUN addgroup -S rustlog && adduser -S rustlog -G rustlog && mkdir /logs && chown rustlog: /logs
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/rustlog /usr/local/bin/
 USER rustlog

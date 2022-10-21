@@ -151,7 +151,7 @@ pub async fn list_available_logs(
         ChannelParam::Channel(name) => app.get_user_id_by_name(&name).await?,
     };
 
-    let available_logs = if let Some(user) = user {
+    let mut available_logs = if let Some(user) = user {
         let user_id = match user {
             UserParam::UserId(id) => id,
             UserParam::User(name) => app.get_user_id_by_name(&name).await?,
@@ -191,6 +191,7 @@ pub async fn list_available_logs(
         }
         available_logs
     };
+    available_logs.reverse();
 
     Ok(Json(AvailableLogs { available_logs }))
 }
