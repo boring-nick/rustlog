@@ -193,7 +193,11 @@ pub async fn list_available_logs(
     };
     available_logs.reverse();
 
-    Ok(Json(AvailableLogs { available_logs }))
+    if !available_logs.is_empty() {
+        Ok(Json(AvailableLogs { available_logs }))
+    } else {
+        Err(Error::NotFound)
+    }
 }
 
 pub async fn redirect_to_latest_channel_logs(
