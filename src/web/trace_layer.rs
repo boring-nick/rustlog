@@ -21,8 +21,8 @@ pub fn on_response(response: &Response<BoxBody>, latency: Duration, span: &Span)
     let status = response.status();
     let ms = latency.as_millis();
 
-    span.record("http.status", &status.as_str());
-    span.record("http.latency", &ms.to_string().as_str());
+    span.record("http.status", status.as_str());
+    span.record("http.latency", ms.to_string().as_str());
 
     info!("HTTP response {status} processed in {ms}ms");
 }

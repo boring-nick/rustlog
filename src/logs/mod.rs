@@ -353,12 +353,11 @@ impl Logs {
             .choose(&mut rng)
             .ok_or(Error::NotFound)?;
 
-        Ok(self
-            .read_channel(channel_id, log_date)
+        self.read_channel(channel_id, log_date)
             .await?
             .into_iter()
             .choose(&mut rng)
-            .ok_or(Error::NotFound)?)
+            .ok_or(Error::NotFound)
     }
 
     pub async fn random_user_line(&self, channel_id: &str, user_id: &str) -> Result<String> {
@@ -376,12 +375,11 @@ impl Logs {
             .choose(&mut rng)
             .ok_or(Error::NotFound)?;
 
-        Ok(self
-            .read_user(channel_id, user_id, date)
+        self.read_user(channel_id, user_id, date)
             .await?
             .into_iter()
             .choose(&mut rng)
-            .ok_or(Error::NotFound)?)
+            .ok_or(Error::NotFound)
     }
 
     /// Gets a write handle for a given channel for today, creates/opens one if it doesn't exist
@@ -463,8 +461,8 @@ pub fn get_user_index_path(
 ) -> PathBuf {
     root_path
         .join(channel_id)
-        .join(&year.to_string())
-        .join(&month.to_string())
+        .join(year.to_string())
+        .join(month.to_string())
         .join("users")
         .join(format!("{user_id}.indexes"))
 }
