@@ -37,6 +37,7 @@ impl<'a> Bot<'a> {
             .await
         {
             Ok(users) => {
+                info!("Joining {} channels", users.len());
                 for channel_login in users.into_values() {
                     info!("Logging channel {channel_login}");
                     client.join(channel_login).expect("Failed to join channel");

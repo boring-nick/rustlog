@@ -47,25 +47,32 @@ impl App<'_> {
             }
         }
 
-        if !ids_to_request.is_empty() || !names_to_request.is_empty() {
-            debug!(
-                "Requesting user info for ids {ids_to_request:?} and names {names_to_request:?}"
-            );
-            let request = GetUsersRequest::builder()
-                .id(ids_to_request)
-                .login(names_to_request)
-                .build();
+        let mut new_users = Vec::with_capacity(ids_to_request.len() + names_to_request.len());
 
+        // There are no chunks if the vec is empty, so there is no empty request made
+        for chunk in ids_to_request.chunks(100) {
+            debug!("Requetsing user info for ids {chunk:?}");
+
+            let request = GetUsersRequest::builder().id(chunk.to_vec()).build();
             let response = self.helix_client.req_get(request, &*self.token).await?;
+            new_users.extend(response.data);
+        }
 
-            for user in response.data {
-                let id = user.id.into_string();
-                let login = user.login.into_string();
+        for chunk in names_to_request.chunks(100) {
+            debug!("Requesting user info for names {chunk:?}");
 
-                self.users.insert(id.clone(), login.clone());
+            let request = GetUsersRequest::builder().login(chunk.to_vec()).build();
+            let response = self.helix_client.req_get(request, &*self.token).await?;
+            new_users.extend(response.data);
+        }
 
-                users.insert(id, login);
-            }
+        for user in new_users {
+            let id = user.id.into_string();
+            let login = user.login.into_string();
+
+            self.users.insert(id.clone(), login.clone());
+
+            users.insert(id, login);
         }
 
         Ok(users)
