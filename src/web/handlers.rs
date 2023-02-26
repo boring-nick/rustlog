@@ -12,7 +12,7 @@ use crate::{
     Result,
 };
 use axum::{
-    extract::{Path, Query},
+    extract::{Path, Query, RawQuery},
     response::Redirect,
     Extension, Json,
 };
@@ -202,33 +202,50 @@ pub async fn list_available_logs(
 
 pub async fn redirect_to_latest_channel_logs(
     Path((channel_id_type, channel)): Path<(String, String)>,
+    RawQuery(query): RawQuery,
 ) -> Redirect {
     let today = Utc::today();
     let year = today.year();
     let month = today.month();
     let day = today.day();
 
-    let new_uri = format!("/{channel_id_type}/{channel}/{year}/{month}/{day}");
+    let mut new_uri = format!("/{channel_id_type}/{channel}/{year}/{month}/{day}");
+    if let Some(query) = query {
+        new_uri.push('?');
+        new_uri.push_str(&query);
+    }
+
     Redirect::to(&new_uri)
 }
 
-pub async fn redirect_to_latest_user_name_logs(path: Path<(String, String, String)>) -> Redirect {
-    redirect_to_latest_user_logs(path, "user")
+pub async fn redirect_to_latest_user_name_logs(
+    path: Path<(String, String, String)>,
+    query: RawQuery,
+) -> Redirect {
+    redirect_to_latest_user_logs(path, query, "user")
 }
 
-pub async fn redirect_to_latest_user_id_logs(path: Path<(String, String, String)>) -> Redirect {
-    redirect_to_latest_user_logs(path, "userid")
+pub async fn redirect_to_latest_user_id_logs(
+    path: Path<(String, String, String)>,
+    query: RawQuery,
+) -> Redirect {
+    redirect_to_latest_user_logs(path, query, "userid")
 }
 
 fn redirect_to_latest_user_logs(
     Path((channel_id_type, channel, user)): Path<(String, String, String)>,
+    RawQuery(query): RawQuery,
     user_id_type: &str,
 ) -> Redirect {
     let today = Utc::today();
     let year = today.year();
     let month = today.month();
 
-    let new_uri = format!("/{channel_id_type}/{channel}/{user_id_type}/{user}/{year}/{month}");
+    let mut new_uri = format!("/{channel_id_type}/{channel}/{user_id_type}/{user}/{year}/{month}");
+    if let Some(query) = query {
+        new_uri.push('?');
+        new_uri.push_str(&query);
+    }
     Redirect::to(&new_uri)
 }
 
