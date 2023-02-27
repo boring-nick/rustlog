@@ -5,7 +5,7 @@ mod schema;
 mod trace_layer;
 
 use crate::app::App;
-use axum::{handler::Handler, routing::get, Extension, Router};
+use axum::{routing::get, Extension, Router};
 use std::{
     net::{AddrParseError, SocketAddr},
     str::FromStr,
@@ -22,8 +22,13 @@ pub async fn run(app: App<'static>) {
     let app = Router::new()
         .route("/channels", get(handlers::get_channels))
         .route("/list", get(handlers::list_available_logs))
+        // The redirect routes are duplicated to handle a trailing slash properly
         .route(
             "/:channel_id_type/:channel",
+            get(handlers::redirect_to_latest_channel_logs),
+        )
+        .route(
+            "/:channel_id_type/:channel/",
             get(handlers::redirect_to_latest_channel_logs),
         )
         // For some reason axum considers it a path overlap if user id type is dynamic
@@ -32,7 +37,15 @@ pub async fn run(app: App<'static>) {
             get(handlers::redirect_to_latest_user_name_logs),
         )
         .route(
+            "/:channel_id_type/:channel/user/:user/",
+            get(handlers::redirect_to_latest_user_name_logs),
+        )
+        .route(
             "/:channel_id_type/:channel/userid/:user",
+            get(handlers::redirect_to_latest_user_id_logs),
+        )
+        .route(
+            "/:channel_id_type/:channel/userid/:user/",
             get(handlers::redirect_to_latest_user_id_logs),
         )
         .route(
@@ -65,7 +78,7 @@ pub async fn run(app: App<'static>) {
                 .make_span_with(trace_layer::make_span_with)
                 .on_response(trace_layer::on_response),
         )
-        .fallback(frontend::static_asset.into_service())
+        .fallback(frontend::static_asset)
         .layer(cors);
 
     info!("Listening on {listen_address}");
