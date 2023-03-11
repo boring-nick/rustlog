@@ -1077,6 +1077,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "prometheus"
+version = "0.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "449811d15fbdf5ceb5c1144416066429cf82316e2ec8ce0c1f6f8a02e7bbcf8c"
+dependencies = [
+ "cfg-if",
+ "fnv",
+ "lazy_static",
+ "memchr",
+ "parking_lot",
+ "protobuf",
+ "thiserror",
+]
+
+[[package]]
+name = "protobuf"
+version = "2.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
+
+[[package]]
 name = "quote"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1275,6 +1296,7 @@ dependencies = [
  "itertools",
  "mime_guess",
  "pretty_assertions",
+ "prometheus",
  "rand",
  "reqwest",
  "rust-embed",
@@ -1820,16 +1842,17 @@ checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
 
 [[package]]
 name = "twitch-irc"
-version = "4.0.0"
+version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7aa218ced8b979190df764e238b88d993cd4c25fe337c1dd9384e25d71cbae64"
+checksum = "37784b5551aef05babf0f948683b4a1daedf0135a1954607639491955206f2e3"
 dependencies = [
  "async-trait",
  "bytes",
  "chrono",
+ "either",
  "enum_dispatch",
  "futures-util",
- "itertools",
+ "prometheus",
  "smallvec",
  "thiserror",
  "tokio",

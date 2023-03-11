@@ -6,6 +6,7 @@ mod trace_layer;
 
 use crate::app::App;
 use axum::{routing::get, Extension, Router, ServiceExt};
+use prometheus::{Encoder, TextEncoder};
 use std::{
     net::{AddrParseError, SocketAddr},
     str::FromStr,
@@ -59,6 +60,7 @@ pub async fn run(app: App<'static>) {
             "/:channel_id_type/:channel/user/:user/random",
             get(handlers::random_user_line_by_name),
         )
+        .route("/metrics", get(metrics))
         .layer(Extension(app))
         .layer(
             TraceLayer::new_for_http()
@@ -84,4 +86,14 @@ pub fn parse_listen_addr(addr: &str) -> Result<SocketAddr, AddrParseError> {
     } else {
         SocketAddr::from_str(addr)
     }
+}
+
+async fn metrics() -> Vec<u8> {
+    let metric_families = prometheus::gather();
+
+    let encoder = TextEncoder::new();
+    let mut buffer = Vec::new();
+    encoder.encode(&metric_families, &mut buffer).unwrap();
+
+    buffer
 }

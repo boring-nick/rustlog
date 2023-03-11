@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
 use std::{
     collections::{BTreeMap, HashMap},
-    fmt::{Display, Write},
+    fmt::Display,
 };
 use tokio::fs::File;
 use tokio::io::BufWriter;
-use twitch_irc::message::{ClearChatAction, HostTargetAction, IRCMessage, ServerMessage};
+use twitch_irc::message::{ClearChatAction, IRCMessage, ServerMessage};
 
 pub type ChannelLogDateMap = BTreeMap<u32, BTreeMap<u32, Vec<u32>>>;
 pub type UserLogDateMap = BTreeMap<u32, Vec<u32>>;
@@ -67,7 +67,6 @@ pub struct Message {
 #[derive(Serialize_repr)]
 #[repr(i8)]
 pub enum MessageType {
-    Unset = -1,
     // Whisper = 0,
     PrivMsg = 1,
     ClearChat = 2,
@@ -171,33 +170,6 @@ impl Message {
                     id: user_notice.message_id,
                     raw,
                     r#type: MessageType::UserNotice,
-                    tags,
-                })
-            }
-            ServerMessage::HostTarget(host_target) => {
-                let text = match &host_target.action {
-                    HostTargetAction::HostModeOn {
-                        hosted_channel_login,
-                        viewer_count,
-                    } => {
-                        let mut text = format!("now hosting {hosted_channel_login}");
-                        if let Some(viewer_count) = viewer_count {
-                            write!(text, " with {viewer_count} viewers")?;
-                        }
-                        text
-                    }
-                    HostTargetAction::HostModeOff { .. } => "exiting host mode".to_owned(),
-                };
-
-                Ok(Message {
-                    text,
-                    username: String::new(),
-                    display_name: String::new(),
-                    channel: host_target.channel_login,
-                    timestamp: Utc::now(), // is this correct?
-                    id: String::new(),
-                    raw,
-                    r#type: MessageType::Unset,
                     tags,
                 })
             }
