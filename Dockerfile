@@ -1,7 +1,7 @@
-FROM node:16-alpine as frontend
+FROM node:18-alpine as frontend
 WORKDIR /src/web
 COPY web .
-RUN yarn install
+RUN yarn install --ignore-optional
 RUN yarn build
 
 FROM docker.io/clux/muslrust:stable AS chef
