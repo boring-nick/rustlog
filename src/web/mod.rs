@@ -78,6 +78,7 @@ pub async fn run(app: App<'static>) {
                 .make_span_with(trace_layer::make_span_with)
                 .on_response(trace_layer::on_response),
         )
+        .route("/assets/*asset", get(frontend::static_asset))
         .fallback(frontend::static_asset)
         .layer(cors);
 

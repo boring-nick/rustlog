@@ -9,7 +9,7 @@ use rust_embed::RustEmbed;
 const INDEX_HTML: &str = "index.html";
 
 #[derive(RustEmbed)]
-#[folder = "$CARGO_MANIFEST_DIR/web/build"]
+#[folder = "$CARGO_MANIFEST_DIR/web/dist"]
 struct Assets;
 
 pub async fn static_asset(uri: Uri) -> Response {
