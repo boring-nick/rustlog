@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use super::{
     responders::logs::{LogsResponse, LogsResponseType, ProcessedLogs, ProcessedLogsType},
     schema::{
@@ -56,7 +58,9 @@ pub async fn get_channel_logs(
     let log_date = ChannelLogDate::try_from(&channel_log_params)?;
     debug!("Querying logs for date {log_date:?}");
 
+    let started_at = Instant::now();
     let lines = read_channel(&app.db, &channel_id, log_date).await?;
+    debug!("Querying DB took {}ms", started_at.elapsed().as_millis());
 
     let response_type = if logs_params.raw {
         LogsResponseType::Raw(lines)
@@ -67,7 +71,10 @@ pub async fn get_channel_logs(
             ProcessedLogsType::Text
         };
 
-        LogsResponseType::Processed(ProcessedLogs::parse_raw(lines, logs_type))
+        let started_at = Instant::now();
+        let response = LogsResponseType::Processed(ProcessedLogs::parse_raw(lines, logs_type));
+        debug!("Parsing logs took {}ms", started_at.elapsed().as_millis());
+        response
     };
 
     Ok(LogsResponse {

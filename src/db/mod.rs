@@ -17,7 +17,7 @@ pub async fn read_channel(
     log_date: ChannelLogDate,
 ) -> Result<Vec<String>> {
     let messages = db
-        .query("SELECT raw FROM message WHERE channel_id = ? AND toStartOfDay(timestamp) = ?")
+        .query("SELECT raw FROM message WHERE channel_id = ? AND toStartOfDay(timestamp) = ? ORDER BY timestamp ASC")
         .bind(channel_id)
         .bind(log_date.to_string())
         .fetch_all()
@@ -33,7 +33,7 @@ pub async fn read_user(
     log_date: UserLogDate,
 ) -> Result<Vec<String>> {
     let messages = db
-        .query("SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND toStartOfMonth(timestamp) = ?")
+        .query("SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND toStartOfMonth(timestamp) = ? ORDER BY timestamp ASC")
         .bind(channel_id)
         .bind(user_id)
         .bind(format!("{}-{:0>2}-1", log_date.year, log_date.month))

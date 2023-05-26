@@ -4,6 +4,7 @@ use axum::{
     Json,
 };
 use itertools::Itertools;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde_json::json;
 use tracing::warn;
 
@@ -25,7 +26,7 @@ pub struct ProcessedLogs {
 impl ProcessedLogs {
     pub fn parse_raw(lines: Vec<String>, logs_type: ProcessedLogsType) -> Self {
         let messages = lines
-            .into_iter()
+            .into_par_iter()
             .filter_map(|line| match Message::parse_from_raw_irc(line) {
                 Ok(msg) => Some(msg),
                 Err(err) => {

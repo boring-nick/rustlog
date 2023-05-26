@@ -21,6 +21,7 @@ COPY --from=frontend /src/web web/
 RUN cargo build --release
 
 FROM debian:bullseye AS runtime
+RUN apt update && apt install -y curl
 RUN useradd rustlog && mkdir /logs && chown rustlog: /logs
 COPY --from=builder /app/target/release/rustlog /usr/local/bin/
 USER rustlog

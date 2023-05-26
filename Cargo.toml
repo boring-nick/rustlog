@@ -18,6 +18,7 @@ itertools = "0.10.3"
 mime_guess = "2.0.4"
 prometheus = "0.13.3"
 rand = "0.8.5"
+rayon = "1.7.0"
 reqwest = { version = "0.11.11", features = ["rustls-tls"] }
 rust-embed = { version = "6.4.0", features = ["interpolate-folder-path"] }
 serde = { version = "1.0.137", features = ["derive"] }
