@@ -18,19 +18,25 @@ pub enum Error {
     InvalidParam(String),
     #[error("Internal error")]
     Internal,
+    #[error("Database error")]
+    Clickhouse(#[from] clickhouse::error::Error),
     #[error("Not found")]
     NotFound,
 }
 
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
-        let status_code = match self {
+        let status_code = match &self {
             Error::Helix(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::Io(_) => StatusCode::INTERNAL_SERVER_ERROR,
             Error::ParseInt(_) => StatusCode::BAD_REQUEST,
             Error::Internal => StatusCode::INTERNAL_SERVER_ERROR,
             Error::NotFound => StatusCode::NOT_FOUND,
             Error::InvalidParam(_) => StatusCode::BAD_REQUEST,
+            Error::Clickhouse(error) => {
+                error!("DB error: {error}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         };
 
         (status_code, self.to_string()).into_response()

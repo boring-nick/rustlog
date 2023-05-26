@@ -48,7 +48,7 @@ pub async fn run(app: App<'static>) {
             "/:channel_id_type/:channel/userid/:user/:year/:month",
             get(handlers::get_user_logs_by_id),
         )
-        .route(
+        /*.route(
             "/:channel_id_type/:channel/random",
             get(handlers::random_channel_line),
         )
@@ -59,7 +59,7 @@ pub async fn run(app: App<'static>) {
         .route(
             "/:channel_id_type/:channel/user/:user/random",
             get(handlers::random_user_line_by_name),
-        )
+        )*/
         .route("/metrics", get(metrics))
         .layer(Extension(app))
         .layer(

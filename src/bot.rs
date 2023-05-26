@@ -1,5 +1,13 @@
-use crate::{app::App, logs::extract_channel_and_user_from_raw};
+use std::borrow::Cow;
+
+use crate::{
+    app::App,
+    db::schema::Message,
+    logs::{extract_channel_and_user_from_raw, extract_timestamp},
+};
 use anyhow::anyhow;
+use chrono::Utc;
+use tokio::sync::mpsc::Sender;
 use tracing::{debug, error, info, trace};
 use twitch_irc::{
     login::LoginCredentials,
@@ -11,18 +19,23 @@ type TwitchClient<C> = TwitchIRCClient<SecureTCPTransport, C>;
 
 const COMMAND_PREFIX: &str = "!rustlog ";
 
-pub async fn run<C: LoginCredentials>(login_credentials: C, app: App<'_>) {
-    let bot = Bot::new(app);
+pub async fn run<C: LoginCredentials>(
+    login_credentials: C,
+    app: App<'_>,
+    writer_tx: Sender<Message<'static>>,
+) {
+    let bot = Bot::new(app, writer_tx);
     bot.run(login_credentials).await;
 }
 
 struct Bot<'a> {
     app: App<'a>,
+    writer_tx: Sender<Message<'static>>,
 }
 
 impl<'a> Bot<'a> {
-    pub fn new(app: App<'a>) -> Bot<'a> {
-        Self { app }
+    pub fn new(app: App<'a>, writer_tx: Sender<Message<'static>>) -> Bot<'a> {
+        Self { app, writer_tx }
     }
 
     pub async fn run<C: LoginCredentials>(self, login_credentials: C) {
@@ -83,10 +96,17 @@ impl<'a> Bot<'a> {
         let irc_message = IRCMessage::from(msg);
 
         if let Some((channel_id, maybe_user_id)) = extract_channel_and_user_from_raw(&irc_message) {
-            self.app
-                .logs
-                .write_message(irc_message.as_raw_irc(), channel_id, maybe_user_id)
-                .await?;
+            let timestamp = extract_timestamp(&irc_message)
+                .unwrap_or_else(|| Utc::now().timestamp_millis().try_into().unwrap());
+            let user_id = maybe_user_id.unwrap_or_default().to_owned();
+
+            let message = Message {
+                channel_id: Cow::Owned(channel_id.to_owned()),
+                user_id: Cow::Owned(user_id),
+                timestamp,
+                raw: Cow::Owned(irc_message.as_raw_irc()),
+            };
+            self.writer_tx.send(message).await?;
         }
 
         Ok(())

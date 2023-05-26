@@ -2,30 +2,24 @@ mod app;
 mod args;
 mod bot;
 mod config;
+mod db;
 mod error;
 mod logs;
 mod migrator;
-mod reindexer;
 mod web;
 
 pub type Result<T> = std::result::Result<T, error::Error>;
 
+use anyhow::Context;
 use app::App;
 use args::{Args, Command};
 use clap::Parser;
 use config::Config;
 use dashmap::DashMap;
-use logs::{
-    index::{self, Index},
-    Logs,
-};
+use db::{setup_db, writer::create_writer};
 use migrator::Migrator;
-use std::{path::PathBuf, sync::Arc};
-use tokio::{
-    fs::{read_dir, File},
-    io::AsyncReadExt,
-    try_join,
-};
+use std::sync::Arc;
+use tokio::try_join;
 use tracing::info;
 use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};
 use twitch_api2::{
@@ -44,38 +38,46 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = Config::load().await?;
-    let logs = Logs::new(&config.logs_directory).await?;
+    let mut db = clickhouse::Client::default()
+        .with_url(&config.clickhouse_url)
+        .with_database(&config.clickhouse_db);
+
+    if let Some(user) = &config.clickhouse_username {
+        db = db.with_user(user);
+    }
+
+    if let Some(password) = &config.clickhouse_password {
+        db = db.with_user(password);
+    }
 
     let args = Args::parse();
 
-    match args.subcommand {
-        None => run(config, logs).await,
-        Some(Command::Reindex { channels }) => {
-            let channel_list = channels.map_or_else(Vec::new, |channels| {
-                channels.split(',').map(str::to_owned).collect()
-            });
+    setup_db(&db).await.context("Could not run DB migrations")?;
 
-            reindex(config, logs, channel_list).await
+    match args.subcommand {
+        None => run(config, db).await,
+        Some(Command::Migrate { source_dir }) => {
+            migrate(db, config.clickhouse_write_batch_size, source_dir).await
         }
-        Some(Command::PrintIndex { file_path }) => print_index(file_path).await,
-        Some(Command::Migrate { source_dir }) => migrate(config, logs, source_dir).await,
     }
 }
 
-async fn run(config: Config, logs: Logs) -> anyhow::Result<()> {
+async fn run(config: Config, db: clickhouse::Client) -> anyhow::Result<()> {
     let helix_client: HelixClient<reqwest::Client> = HelixClient::default();
     let token = generate_token(&config).await?;
+
+    let writer_tx = create_writer(&db).await?;
 
     let app = App {
         helix_client,
         token: Arc::new(token),
         users: Arc::new(DashMap::new()),
-        logs: logs.clone(),
         config: Arc::new(config),
+        db: Arc::new(db),
     };
 
     let login_credentials = StaticLoginCredentials::anonymous();
-    let bot_handle = tokio::spawn(bot::run(login_credentials, app.clone()));
+    let bot_handle = tokio::spawn(bot::run(login_credentials, app.clone(), writer_tx));
     let web_handle = tokio::spawn(web::run(app));
 
     try_join!(bot_handle, web_handle)?;
@@ -83,49 +85,12 @@ async fn run(config: Config, logs: Logs) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn reindex(config: Config, logs: Logs, mut channels: Vec<String>) -> anyhow::Result<()> {
-    let helix_client: HelixClient<reqwest::Client> = HelixClient::default();
-    let token = generate_token(&config).await?;
-
-    let app = App {
-        helix_client,
-        token: Arc::new(token),
-        users: Arc::new(DashMap::new()),
-        config: Arc::new(config),
-        logs,
-    };
-
-    populate_channel_list(&mut channels, &app).await?;
-
-    reindexer::run(app, &channels).await
-}
-
-async fn print_index(file_path: PathBuf) -> anyhow::Result<()> {
-    let mut file = File::open(&file_path).await?;
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf).await?;
-
-    for bytes in buf.chunks_exact(index::SIZE) {
-        let index = Index::from_bytes(bytes)?;
-        info!("Index: {index:?}");
-    }
-
-    Ok(())
-}
-
-async fn migrate(config: Config, logs: Logs, source_logs_path: String) -> anyhow::Result<()> {
-    let helix_client: HelixClient<reqwest::Client> = HelixClient::default();
-    let token = generate_token(&config).await?;
-
-    let app = App {
-        helix_client,
-        token: Arc::new(token),
-        users: Arc::new(DashMap::new()),
-        logs,
-        config: Arc::new(config),
-    };
-
-    let migrator = Migrator::new(app, &source_logs_path).await?;
+async fn migrate(
+    db: clickhouse::Client,
+    batch_size: usize,
+    source_logs_path: String,
+) -> anyhow::Result<()> {
+    let migrator = Migrator::new(db, batch_size, &source_logs_path).await?;
     migrator.run().await
 }
 
@@ -143,7 +108,7 @@ async fn generate_token(config: &Config) -> anyhow::Result<AppAccessToken> {
     Ok(token)
 }
 
-async fn populate_channel_list(channels: &mut Vec<String>, app: &App<'_>) -> anyhow::Result<()> {
+/*async fn populate_channel_list(channels: &mut Vec<String>, app: &App<'_>) -> anyhow::Result<()> {
     if channels.is_empty() {
         let mut dir = read_dir(&*app.logs.root_path).await?;
 
@@ -159,4 +124,4 @@ async fn populate_channel_list(channels: &mut Vec<String>, app: &App<'_>) -> any
         }
     }
     Ok(())
-}
+}*/

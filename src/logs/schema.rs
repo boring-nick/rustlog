@@ -1,6 +1,5 @@
 use anyhow::anyhow;
 use anyhow::Context;
-use chrono::Date;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
@@ -8,8 +7,6 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt::Display,
 };
-use tokio::fs::File;
-use tokio::io::BufWriter;
 use twitch_irc::message::{ClearChatAction, IRCMessage, ServerMessage};
 
 pub type ChannelLogDateMap = BTreeMap<u32, BTreeMap<u32, Vec<u32>>>;
@@ -24,16 +21,16 @@ pub struct ChannelLogDate {
     pub day: u32,
 }
 
+impl Display for ChannelLogDate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}-{:0>2}-{:0>2}", self.year, self.month, self.day)
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub struct UserLogDate {
     pub year: u32,
     pub month: u32,
-}
-
-impl Display for ChannelLogDate {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}-{}-{}", self.year, self.month, self.day)
-    }
 }
 
 #[derive(Deserialize)]
@@ -88,6 +85,9 @@ impl Message {
             .into_iter()
             .map(|(key, value)| (key, value.unwrap_or_default()))
             .collect();
+
+        // TODO: dont use ServerMessage parsing, manually get required tags and match message type
+        // Needed because some old logs arent valid PrivmsgMessages in modern twitch-irc-rs
         let server_message = ServerMessage::try_from(irc_message).with_context(|| {
             format!("Could not parse irc message from {raw} as a server message")
         })?;
@@ -193,10 +193,4 @@ impl Display for Message {
             write!(f, "{base} {text}")
         }
     }
-}
-
-#[derive(Debug)]
-pub(super) struct OpenWriter {
-    pub writer: BufWriter<File>,
-    pub date: Date<Utc>,
 }

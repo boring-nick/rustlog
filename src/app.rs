@@ -1,4 +1,4 @@
-use crate::{config::Config, logs::Logs, Result};
+use crate::{config::Config, Result};
 use anyhow::Context;
 use dashmap::DashMap;
 use std::{collections::HashMap, sync::Arc};
@@ -10,7 +10,7 @@ pub struct App<'a> {
     pub helix_client: HelixClient<'a, reqwest::Client>,
     pub token: Arc<AppAccessToken>,
     pub users: Arc<DashMap<String, String>>, // User id, login name
-    pub logs: Logs,
+    pub db: Arc<clickhouse::Client>,
     pub config: Arc<Config>,
 }
 
@@ -51,7 +51,7 @@ impl App<'_> {
 
         // There are no chunks if the vec is empty, so there is no empty request made
         for chunk in ids_to_request.chunks(100) {
-            debug!("Requetsing user info for ids {chunk:?}");
+            debug!("Requesting user info for ids {chunk:?}");
 
             let request = GetUsersRequest::builder().id(chunk.to_vec()).build();
             let response = self.helix_client.req_get(request, &*self.token).await?;

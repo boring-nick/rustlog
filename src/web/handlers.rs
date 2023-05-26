@@ -7,6 +7,7 @@ use super::{
 };
 use crate::{
     app::App,
+    db::{read_available_channel_logs, read_available_user_logs, read_channel, read_user},
     error::Error,
     logs::schema::{ChannelLogDate, UserLogDate},
     Result,
@@ -55,7 +56,7 @@ pub async fn get_channel_logs(
     let log_date = ChannelLogDate::try_from(&channel_log_params)?;
     debug!("Querying logs for date {log_date:?}");
 
-    let lines = app.logs.read_channel(&channel_id, log_date).await?;
+    let lines = read_channel(&app.db, &channel_id, log_date).await?;
 
     let response_type = if logs_params.raw {
         LogsResponseType::Raw(lines)
@@ -122,7 +123,7 @@ async fn get_user_logs(
         ChannelIdType::Id => user_logs_path.channel,
     };
 
-    let lines = app.logs.read_user(&channel_id, &user_id, log_date).await?;
+    let lines = read_user(&app.db, &channel_id, &user_id, log_date).await?;
 
     let response_type = if logs_params.raw {
         LogsResponseType::Raw(lines)
@@ -156,10 +157,7 @@ pub async fn list_available_logs(
             UserParam::UserId(id) => id,
             UserParam::User(name) => app.get_user_id_by_name(&name).await?,
         };
-        let user_logs = app
-            .logs
-            .get_available_user_logs(&channel_id, &user_id)
-            .await?;
+        let user_logs = read_available_user_logs(&app.db, &channel_id, &user_id).await?;
 
         let mut available_logs = Vec::new();
         for (year, months) in user_logs {
@@ -172,10 +170,7 @@ pub async fn list_available_logs(
         }
         available_logs
     } else {
-        let channel_logs = app
-            .logs
-            .get_available_channel_logs(&channel_id, false)
-            .await?;
+        let channel_logs = read_available_channel_logs(&app.db, &channel_id).await?;
 
         let mut available_logs = Vec::new();
         for (year, months) in channel_logs {
@@ -249,12 +244,11 @@ fn redirect_to_latest_user_logs(
     Redirect::to(&new_uri)
 }
 
-pub async fn random_channel_line(
-    app: Extension<App<'_>>,
-    Path((channel_id_type, channel)): Path<(ChannelIdType, String)>,
-    Query(LogsParams { json, raw, reverse }): Query<LogsParams>,
+/*pub async fn random_channel_line(// app: Extension<App<'_>>,
+    // Path((channel_id_type, channel)): Path<(ChannelIdType, String)>,
+    // Query(LogsParams { json, raw, reverse }): Query<LogsParams>,
 ) -> Result<LogsResponse> {
-    let channel_id = match channel_id_type {
+        let channel_id = match channel_id_type {
         ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
         ChannelIdType::Id => channel,
     };
@@ -297,7 +291,7 @@ pub async fn random_user_line_by_id(
     random_user_line(app, channel_id_type, channel, user_id, query).await
 }
 
-pub async fn random_user_line(
+async fn random_user_line(
     app: Extension<App<'_>>,
     channel_id_type: ChannelIdType,
     channel: String,
@@ -328,4 +322,4 @@ pub async fn random_user_line(
         response_type,
         reverse,
     })
-}
+}*/

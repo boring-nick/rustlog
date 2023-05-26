@@ -9,6 +9,7 @@ anyhow = "1.0.58"
 axum = "0.6.9"
 chrono = { version = "0.4.19", features = ["serde"] }
 clap = { version = "3.2.16", features = ["derive"] }
+clickhouse = "0.11.4"
 crossbeam-channel = "0.5.5"
 dashmap = "5.3.4"
 flate2 = "1.0.24"

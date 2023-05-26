@@ -5,6 +5,7 @@ use axum::{
 };
 use itertools::Itertools;
 use serde_json::json;
+use tracing::warn;
 
 pub struct LogsResponse {
     pub response_type: LogsResponseType,
@@ -25,7 +26,13 @@ impl ProcessedLogs {
     pub fn parse_raw(lines: Vec<String>, logs_type: ProcessedLogsType) -> Self {
         let messages = lines
             .into_iter()
-            .filter_map(|line| Message::parse_from_raw_irc(line).ok())
+            .filter_map(|line| match Message::parse_from_raw_irc(line) {
+                Ok(msg) => Some(msg),
+                Err(err) => {
+                    warn!("Could not parse message: {err:#}");
+                    None
+                }
+            })
             .collect();
 
         Self {
