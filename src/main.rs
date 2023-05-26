@@ -56,8 +56,17 @@ async fn main() -> anyhow::Result<()> {
 
     match args.subcommand {
         None => run(config, db).await,
-        Some(Command::Migrate { source_dir }) => {
-            migrate(db, config.clickhouse_write_batch_size, source_dir).await
+        Some(Command::Migrate {
+            source_dir,
+            channel_id,
+        }) => {
+            migrate(
+                db,
+                config.clickhouse_write_batch_size,
+                source_dir,
+                channel_id,
+            )
+            .await
         }
     }
 }
@@ -89,8 +98,9 @@ async fn migrate(
     db: clickhouse::Client,
     batch_size: usize,
     source_logs_path: String,
+    channel_ids: Vec<String>,
 ) -> anyhow::Result<()> {
-    let migrator = Migrator::new(db, batch_size, &source_logs_path).await?;
+    let migrator = Migrator::new(db, batch_size, &source_logs_path, channel_ids).await?;
     migrator.run().await
 }
 

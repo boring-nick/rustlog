@@ -24,6 +24,7 @@ pub struct Migrator {
     db: clickhouse::Client,
     batch_size: usize,
     source_logs: LogsReader,
+    channel_ids: Vec<String>,
 }
 
 impl Migrator {
@@ -31,6 +32,7 @@ impl Migrator {
         db: clickhouse::Client,
         batch_size: usize,
         source_logs_path: &str,
+        channel_ids: Vec<String>,
     ) -> anyhow::Result<Migrator> {
         let source_logs = LogsReader::new(source_logs_path).await?;
 
@@ -38,15 +40,23 @@ impl Migrator {
             db,
             batch_size,
             source_logs,
+            channel_ids,
         })
     }
 
     pub async fn run(self) -> anyhow::Result<()> {
+        info!("Migrating channels {:?}", self.channel_ids);
+
         let started_at = Instant::now();
 
         let channels = self.source_logs.get_stored_channels().await?;
 
         for channel_id in channels {
+            if !self.channel_ids.is_empty() && !self.channel_ids.contains(&channel_id) {
+                info!("Skipping channel {channel_id}");
+                continue;
+            }
+
             let available_logs = self
                 .source_logs
                 .get_available_channel_logs(&channel_id, true)
