@@ -206,7 +206,7 @@ pub async fn redirect_to_latest_channel_logs(
     Path((channel_id_type, channel)): Path<(String, String)>,
     RawQuery(query): RawQuery,
 ) -> Redirect {
-    let today = Utc::today();
+    let today = Utc::now();
     let year = today.year();
     let month = today.month();
     let day = today.day();
@@ -239,7 +239,7 @@ fn redirect_to_latest_user_logs(
     RawQuery(query): RawQuery,
     user_id_type: &str,
 ) -> Redirect {
-    let today = Utc::today();
+    let today = Utc::now();
     let year = today.year();
     let month = today.month();
 

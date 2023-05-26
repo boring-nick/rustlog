@@ -3,18 +3,20 @@ mod reader;
 use self::reader::{LogsReader, COMPRESSED_CHANNEL_FILE, UNCOMPRESSED_CHANNEL_FILE};
 use crate::{
     db::schema::{Message, MESSAGES_TABLE},
-    logs::{extract_channel_and_user_from_raw, extract_timestamp, get_day_path},
+    logs::{extract_channel_and_user_from_raw, extract_timestamp},
 };
 use anyhow::anyhow;
-use chrono::{Date, TimeZone, Utc};
+use chrono::{DateTime, Datelike, TimeZone, Utc};
 use clickhouse::inserter::Inserter;
 use flate2::bufread::GzDecoder;
 use itertools::Itertools;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::{
     borrow::Cow,
     convert::TryInto,
     fs::File,
     io::{BufRead, BufReader},
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 use tracing::{debug, info, warn};
@@ -72,7 +74,9 @@ impl Migrator {
                         .with_period(Some(Duration::from_secs(15)));
 
                     for day in days {
-                        let date = Utc.ymd(year.try_into().unwrap(), month, day);
+                        let date = Utc
+                            .with_ymd_and_hms(year.try_into().unwrap(), month, day, 0, 0, 0)
+                            .unwrap();
                         info!(
                             "Migrating channel {channel_id} date {date}",
                             date = date.format("%Y-%m-%d")
@@ -94,7 +98,7 @@ impl Migrator {
     async fn migrate_day<'a>(
         &self,
         channel_id: &'a str,
-        date: Date<Utc>,
+        date: DateTime<Utc>,
         inserter: &mut Inserter<Message<'a>>,
     ) -> anyhow::Result<()> {
         let day_path = get_day_path(&self.source_logs.root_path, channel_id, date);
@@ -122,20 +126,18 @@ impl Migrator {
     async fn migrate_reader<'a, R: BufRead>(
         &self,
         reader: R,
-        date: Date<Utc>,
+        datetime: DateTime<Utc>,
         channel_id: &'a str,
         inserter: &mut Inserter<Message<'a>>,
     ) -> anyhow::Result<()> {
         for chunk in reader.lines().chunks(self.batch_size).into_iter() {
-            for raw in chunk {
-                let raw = raw?;
-
-                match IRCMessage::parse(&raw) {
+            let chunk_lines: Vec<String> = chunk.try_collect()?;
+            let messages: Vec<Message> = chunk_lines
+                .into_par_iter()
+                .filter_map(|raw| match IRCMessage::parse(&raw) {
                     Ok(irc_message) => {
-                        let timestamp = extract_timestamp(&irc_message).unwrap_or_else(|| {
-                            let datetime = date.and_hms_opt(0, 0, 0).unwrap();
-                            datetime.timestamp_millis() as u64
-                        });
+                        let timestamp = extract_timestamp(&irc_message)
+                            .unwrap_or_else(|| datetime.timestamp_millis() as u64);
 
                         let user_id = extract_channel_and_user_from_raw(&irc_message)
                             .and_then(|(_, user_id)| user_id)
@@ -144,16 +146,21 @@ impl Migrator {
 
                         let message = Message {
                             channel_id: Cow::Borrowed(channel_id),
-                            user_id: Cow::Owned(user_id.to_owned()),
+                            user_id: Cow::Owned(user_id),
                             timestamp,
                             raw: Cow::Owned(raw),
                         };
-                        inserter.write(&message).await?;
+                        Some(message)
                     }
                     Err(err) => {
-                        warn!("Could not parse message {raw}: {err}")
+                        warn!("Could not parse message {raw}: {err}");
+                        None
                     }
-                }
+                })
+                .collect();
+
+            for message in messages {
+                inserter.write(&message).await?;
             }
 
             let stats = inserter.commit().await?;
@@ -167,4 +174,12 @@ impl Migrator {
 
         Ok(())
     }
+}
+
+fn get_day_path(root_path: &Path, channel_id: &str, date: DateTime<Utc>) -> PathBuf {
+    root_path
+        .join(channel_id)
+        .join(date.year().to_string())
+        .join(date.month().to_string())
+        .join(date.day().to_string())
 }

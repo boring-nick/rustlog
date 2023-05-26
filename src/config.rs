@@ -47,5 +47,5 @@ fn default_listen_address() -> String {
 }
 
 fn default_batch_size() -> usize {
-    1024
+    32000
 }

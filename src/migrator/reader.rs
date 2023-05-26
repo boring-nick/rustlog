@@ -46,7 +46,7 @@ impl LogsReader {
         channel_id: &str,
         include_compressed: bool,
     ) -> Result<ChannelLogDateMap> {
-        debug!("Gettings logs for channel {channel_id}");
+        debug!("Getting logs for channel {channel_id}");
         let channel_path = self.root_path.join(channel_id);
         if !channel_path.exists() {
             return Err(Error::NotFound);

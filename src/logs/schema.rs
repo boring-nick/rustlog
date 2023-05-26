@@ -173,7 +173,10 @@ impl Message {
                     tags,
                 })
             }
-            _ => Err(anyhow!("Unsupported message type")),
+            other => Err(anyhow!(
+                "Unsupported message type: {}",
+                other.source().command
+            )),
         }
     }
 }

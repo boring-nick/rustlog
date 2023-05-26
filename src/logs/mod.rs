@@ -1,16 +1,6 @@
 pub mod schema;
 
-use chrono::{Date, Datelike, Utc};
-use std::path::{Path, PathBuf};
 use twitch_irc::message::IRCMessage;
-
-pub fn get_day_path(root_path: &Path, channel_id: &str, date: Date<Utc>) -> PathBuf {
-    root_path
-        .join(channel_id)
-        .join(date.year().to_string())
-        .join(date.month().to_string())
-        .join(date.day().to_string())
-}
 
 pub fn extract_channel_and_user_from_raw(
     raw_msg: &'_ IRCMessage,
