@@ -9,7 +9,6 @@ use anyhow::anyhow;
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 use clickhouse::inserter::Inserter;
 use flate2::bufread::GzDecoder;
-use itertools::Itertools;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::{
     borrow::Cow,
@@ -22,9 +21,10 @@ use std::{
 use tracing::{debug, info, warn};
 use twitch_irc::message::IRCMessage;
 
+const LINES_BATCH_SIZE: usize = 32768;
+
 pub struct Migrator {
     db: clickhouse::Client,
-    batch_size: usize,
     source_logs: LogsReader,
     channel_ids: Vec<String>,
 }
@@ -32,7 +32,6 @@ pub struct Migrator {
 impl Migrator {
     pub async fn new(
         db: clickhouse::Client,
-        batch_size: usize,
         source_logs_path: &str,
         channel_ids: Vec<String>,
     ) -> anyhow::Result<Migrator> {
@@ -40,7 +39,6 @@ impl Migrator {
 
         Ok(Self {
             db,
-            batch_size,
             source_logs,
             channel_ids,
         })
@@ -130,50 +128,70 @@ impl Migrator {
         channel_id: &'a str,
         inserter: &mut Inserter<Message<'a>>,
     ) -> anyhow::Result<()> {
-        for chunk in reader.lines().chunks(self.batch_size).into_iter() {
-            let chunk_lines: Vec<String> = chunk.try_collect()?;
-            let messages: Vec<Message> = chunk_lines
-                .into_par_iter()
-                .filter_map(|raw| match IRCMessage::parse(&raw) {
-                    Ok(irc_message) => {
-                        let timestamp = extract_timestamp(&irc_message)
-                            .unwrap_or_else(|| datetime.timestamp_millis() as u64);
+        let mut buffer = Vec::with_capacity(LINES_BATCH_SIZE);
 
-                        let user_id = extract_channel_and_user_from_raw(&irc_message)
-                            .and_then(|(_, user_id)| user_id)
-                            .map(str::to_owned)
-                            .unwrap_or_default();
+        for line in reader.lines() {
+            let line = line?;
+            buffer.push(line);
 
-                        let message = Message {
-                            channel_id: Cow::Borrowed(channel_id),
-                            user_id: Cow::Owned(user_id),
-                            timestamp,
-                            raw: Cow::Owned(raw),
-                        };
-                        Some(message)
-                    }
-                    Err(err) => {
-                        warn!("Could not parse message {raw}: {err}");
-                        None
-                    }
-                })
-                .collect();
-
-            for message in messages {
-                inserter.write(&message).await?;
-            }
-
-            let stats = inserter.commit().await?;
-            if stats.entries > 0 {
-                info!(
-                    "DB: {} entries ({} transactions) have been inserted",
-                    stats.entries, stats.transactions,
-                );
+            if buffer.len() >= LINES_BATCH_SIZE {
+                write_lines_buffer(channel_id, buffer, inserter, datetime).await?;
+                buffer = Vec::with_capacity(LINES_BATCH_SIZE);
             }
         }
 
+        write_lines_buffer(channel_id, buffer, inserter, datetime).await?;
+
         Ok(())
     }
+}
+
+async fn write_lines_buffer<'a>(
+    channel_id: &'a str,
+    buffer: Vec<String>,
+    inserter: &mut Inserter<Message<'a>>,
+    datetime: DateTime<Utc>,
+) -> anyhow::Result<()> {
+    let messages: Vec<Message> = buffer
+        .into_par_iter()
+        .filter_map(|raw| match IRCMessage::parse(&raw) {
+            Ok(irc_message) => {
+                let timestamp = extract_timestamp(&irc_message)
+                    .unwrap_or_else(|| datetime.timestamp_millis() as u64);
+
+                let user_id = extract_channel_and_user_from_raw(&irc_message)
+                    .and_then(|(_, user_id)| user_id)
+                    .map(str::to_owned)
+                    .unwrap_or_default();
+
+                let message = Message {
+                    channel_id: Cow::Borrowed(channel_id),
+                    user_id: Cow::Owned(user_id),
+                    timestamp,
+                    raw: Cow::Owned(raw),
+                };
+                Some(message)
+            }
+            Err(err) => {
+                warn!("Could not parse message {raw}: {err}");
+                None
+            }
+        })
+        .collect();
+
+    for message in messages {
+        inserter.write(&message).await?;
+    }
+
+    let stats = inserter.commit().await?;
+    if stats.entries > 0 {
+        info!(
+            "DB: {} entries ({} transactions) have been inserted",
+            stats.entries, stats.transactions,
+        );
+    }
+
+    Ok(())
 }
 
 fn get_day_path(root_path: &Path, channel_id: &str, date: DateTime<Utc>) -> PathBuf {

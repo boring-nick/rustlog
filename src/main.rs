@@ -59,15 +59,7 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Migrate {
             source_dir,
             channel_id,
-        }) => {
-            migrate(
-                db,
-                config.clickhouse_write_batch_size,
-                source_dir,
-                channel_id,
-            )
-            .await
-        }
+        }) => migrate(db, source_dir, channel_id).await,
     }
 }
 
@@ -96,11 +88,10 @@ async fn run(config: Config, db: clickhouse::Client) -> anyhow::Result<()> {
 
 async fn migrate(
     db: clickhouse::Client,
-    batch_size: usize,
     source_logs_path: String,
     channel_ids: Vec<String>,
 ) -> anyhow::Result<()> {
-    let migrator = Migrator::new(db, batch_size, &source_logs_path, channel_ids).await?;
+    let migrator = Migrator::new(db, &source_logs_path, channel_ids).await?;
     migrator.run().await
 }
 
@@ -117,21 +108,3 @@ async fn generate_token(config: &Config) -> anyhow::Result<AppAccessToken> {
 
     Ok(token)
 }
-
-/*async fn populate_channel_list(channels: &mut Vec<String>, app: &App<'_>) -> anyhow::Result<()> {
-    if channels.is_empty() {
-        let mut dir = read_dir(&*app.logs.root_path).await?;
-
-        while let Some(entry) = dir.next_entry().await? {
-            if entry.metadata().await?.is_dir() {
-                let channel = entry
-                    .file_name()
-                    .to_str()
-                    .expect("invalid folder name")
-                    .to_owned();
-                channels.push(channel);
-            }
-        }
-    }
-    Ok(())
-}*/

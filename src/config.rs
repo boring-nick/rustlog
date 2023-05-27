@@ -14,8 +14,6 @@ pub struct Config {
     pub clickhouse_db: String,
     pub clickhouse_username: Option<String>,
     pub clickhouse_password: Option<String>,
-    #[serde(default = "default_batch_size")]
-    pub clickhouse_write_batch_size: usize,
     #[serde(default = "default_listen_address")]
     pub listen_address: String,
     pub channels: RwLock<HashSet<String>>,
@@ -44,8 +42,4 @@ impl Config {
 
 fn default_listen_address() -> String {
     String::from("0.0.0.0:8025")
-}
-
-fn default_batch_size() -> usize {
-    32000
 }

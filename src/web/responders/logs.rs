@@ -3,7 +3,6 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use itertools::Itertools;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde_json::json;
 use tracing::warn;
@@ -65,7 +64,12 @@ impl IntoResponse for LogsResponse {
                 }
 
                 match processed_logs.logs_type {
-                    ProcessedLogsType::Text => messages.into_iter().join("\n").into_response(),
+                    ProcessedLogsType::Text => messages
+                        .into_iter()
+                        .map(|message| message.to_string())
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                        .into_response(),
                     ProcessedLogsType::Json => Json(json!({
                         "messages": messages,
                     }))
