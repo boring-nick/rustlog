@@ -9,7 +9,9 @@ anyhow = "1.0.58"
 axum = "0.6.9"
 chrono = { version = "0.4.19", features = ["serde"] }
 clap = { version = "3.2.16", features = ["derive"] }
-clickhouse = "0.11.4"
+clickhouse = { version = "0.11.4", default-features = false, features = [
+    "lz4",
+] }
 crossbeam-channel = "0.5.5"
 dashmap = "5.3.4"
 flate2 = "1.0.24"
@@ -20,7 +22,9 @@ mime_guess = "2.0.4"
 prometheus = "0.13.3"
 rand = "0.8.5"
 rayon = "1.7.0"
-reqwest = { version = "0.11.11", features = ["rustls-tls"] }
+reqwest = { version = "0.11.11", features = [
+    "rustls-tls",
+], default-features = false }
 rust-embed = { version = "6.4.0", features = ["interpolate-folder-path"] }
 serde = { version = "1.0.137", features = ["derive"] }
 serde_json = { version = "1.0.81", features = ["preserve_order"] }
@@ -34,7 +38,10 @@ tower-http = { version = "0.4.0", features = [
 ] }
 tracing = "0.1.35"
 tracing-subscriber = { version = "0.3.11", features = ["env-filter"] }
-twitch-irc = { version = "5.0.0", features = ["metrics-collection"] }
+twitch-irc = { version = "5.0.0", default-features = false, features = [
+    "metrics-collection",
+    "transport-tcp-rustls-webpki-roots",
+] }
 twitch_api2 = { version = "0.6.1", features = [
     "reqwest",
     "helix",
