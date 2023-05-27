@@ -18,6 +18,7 @@ use config::Config;
 use dashmap::DashMap;
 use db::{setup_db, writer::create_writer};
 use migrator::Migrator;
+use mimalloc::MiMalloc;
 use std::sync::Arc;
 use tokio::try_join;
 use tracing::info;
@@ -27,6 +28,9 @@ use twitch_api2::{
     HelixClient,
 };
 use twitch_irc::login::StaticLoginCredentials;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

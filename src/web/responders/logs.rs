@@ -1,8 +1,10 @@
-use crate::logs::schema::Message;
+use crate::{error::Error, logs::schema::Message};
 use axum::{
+    body::StreamBody,
     response::{IntoResponse, Response},
     Json,
 };
+use futures_util::stream;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde_json::json;
 use tracing::warn;
@@ -55,7 +57,12 @@ impl IntoResponse for LogsResponse {
                     lines.reverse();
                 }
 
-                lines.join("\n").into_response()
+                let lines = lines
+                    .into_iter()
+                    .flat_map(|line| vec![Ok::<_, Error>(line), Ok("\n".to_owned())]);
+
+                let stream = stream::iter(lines);
+                StreamBody::new(stream).into_response()
             }
             LogsResponseType::Processed(processed_logs) => {
                 let mut messages = processed_logs.messages;
