@@ -8,6 +8,8 @@ use crate::{
 };
 use anyhow::anyhow;
 use chrono::Utc;
+use lazy_static::lazy_static;
+use prometheus::{register_int_counter_vec, IntCounterVec};
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, error, info, trace};
 use twitch_irc::{
@@ -17,6 +19,15 @@ use twitch_irc::{
 };
 
 type TwitchClient<C> = TwitchIRCClient<SecureTCPTransport, C>;
+
+lazy_static! {
+    static ref MESSAGES_RECEIVED_COUNTERS: IntCounterVec = register_int_counter_vec!(
+        "rustlog_messages_received",
+        "How many messages were written",
+        &["channel_id"]
+    )
+    .unwrap();
+}
 
 const COMMAND_PREFIX: &str = "!rustlog ";
 
@@ -106,6 +117,10 @@ impl<'a> Bot<'a> {
         let irc_message = IRCMessage::from(msg);
 
         if let Some((channel_id, maybe_user_id)) = extract_channel_and_user_from_raw(&irc_message) {
+            MESSAGES_RECEIVED_COUNTERS
+                .with_label_values(&[channel_id])
+                .inc();
+
             let timestamp = extract_timestamp(&irc_message)
                 .unwrap_or_else(|| Utc::now().timestamp_millis().try_into().unwrap());
             let user_id = maybe_user_id.unwrap_or_default().to_owned();
