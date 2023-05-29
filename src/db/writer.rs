@@ -1,6 +1,8 @@
 use super::schema::Message;
 use crate::ShutdownRx;
 use clickhouse::{inserter::Inserter, Client};
+use lazy_static::lazy_static;
+use prometheus::{register_int_gauge, IntGauge};
 use std::time::Duration;
 use tokio::{
     sync::mpsc::{channel, Sender},
@@ -9,6 +11,14 @@ use tokio::{
 use tracing::{debug, error, info};
 
 const CHANNEL_SIZE: usize = 10_000;
+
+lazy_static! {
+    static ref BATCH_MSG_COUNT_GAGUE: IntGauge = register_int_gauge!(
+        "rustlog_messages_written_per_batch",
+        "How many messages are written to the database per batch"
+    )
+    .unwrap();
+}
 
 pub async fn create_writer(
     db: &Client,
@@ -61,7 +71,7 @@ async fn write_message(
     let stats = inserter.commit().await?;
     if stats.entries > 0 {
         debug!("{} messages have been inserted", stats.entries);
+        BATCH_MSG_COUNT_GAGUE.set(stats.entries.try_into().unwrap());
     }
-
     Ok(())
 }

@@ -1301,6 +1301,7 @@ dependencies = [
  "dashmap",
  "flate2",
  "futures",
+ "lazy_static",
  "mimalloc",
  "mime_guess",
  "pretty_assertions",
