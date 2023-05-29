@@ -9,25 +9,36 @@ mod migrator;
 mod web;
 
 pub type Result<T> = std::result::Result<T, error::Error>;
+pub type ShutdownRx = watch::Receiver<()>;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use app::App;
 use args::{Args, Command};
 use clap::Parser;
 use config::Config;
 use dashmap::DashMap;
 use db::{setup_db, writer::create_writer};
+use futures::{future::try_join_all, stream::FuturesUnordered, StreamExt};
 use migrator::Migrator;
 use mimalloc::MiMalloc;
-use std::sync::Arc;
-use tokio::try_join;
-use tracing::info;
-use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tokio::{
+    signal::unix::{signal, SignalKind},
+    sync::watch,
+    time::timeout,
+};
+use tracing::{debug, info};
+use tracing_subscriber::EnvFilter;
 use twitch_api2::{
     twitch_oauth2::{AppAccessToken, Scope},
     HelixClient,
 };
 use twitch_irc::login::StaticLoginCredentials;
+
+const SHUTDOWN_TIMEOUT_SECONDS: u64 = 8;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -38,7 +49,6 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
-        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
         .init();
 
     let config = Config::load().await?;
@@ -68,10 +78,12 @@ async fn main() -> anyhow::Result<()> {
 }
 
 async fn run(config: Config, db: clickhouse::Client) -> anyhow::Result<()> {
+    let mut shutdown_rx = listen_shutdown().await;
+
     let helix_client: HelixClient<reqwest::Client> = HelixClient::default();
     let token = generate_token(&config).await?;
 
-    let writer_tx = create_writer(&db).await?;
+    let (writer_tx, mut writer_handle) = create_writer(&db, shutdown_rx.clone()).await?;
 
     let app = App {
         helix_client,
@@ -82,12 +94,43 @@ async fn run(config: Config, db: clickhouse::Client) -> anyhow::Result<()> {
     };
 
     let login_credentials = StaticLoginCredentials::anonymous();
-    let bot_handle = tokio::spawn(bot::run(login_credentials, app.clone(), writer_tx));
-    let web_handle = tokio::spawn(web::run(app));
+    let mut bot_handle = tokio::spawn(bot::run(
+        login_credentials,
+        app.clone(),
+        writer_tx,
+        shutdown_rx.clone(),
+    ));
+    let mut web_handle = tokio::spawn(web::run(app, shutdown_rx.clone()));
 
-    try_join!(bot_handle, web_handle)?;
+    tokio::select! {
+        _ = shutdown_rx.changed() => {
+            debug!("Waiting for tasks to shut down");
 
-    Ok(())
+            let started_at = Instant::now();
+
+            let shutdown_future = try_join_all([bot_handle, web_handle, writer_handle]);
+            match timeout(Duration::from_secs(SHUTDOWN_TIMEOUT_SECONDS), shutdown_future).await {
+                Ok(Ok(_)) => {
+                    debug!("Cleanup finished in {}ms", started_at.elapsed().as_millis());
+                    Ok(())
+                }
+                Ok(Err(err)) => Err(anyhow!("Could not shut down properly: {err}")),
+                Err(_) => {
+                    Err(anyhow!("Tasks did not shut down after {} seconds", SHUTDOWN_TIMEOUT_SECONDS))
+                }
+            }
+
+        }
+        _ = &mut bot_handle => {
+            Err(anyhow!("Bot task exited unexpectedly"))
+        }
+        _ = &mut web_handle => {
+            Err(anyhow!("Web task exited unexpectedly"))
+        }
+        _ = &mut writer_handle => {
+            Err(anyhow!("Writer task exited unexpectedly"))
+        }
+    }
 }
 
 async fn migrate(
@@ -111,4 +154,27 @@ async fn generate_token(config: &Config) -> anyhow::Result<AppAccessToken> {
     info!("Generated new app token");
 
     Ok(token)
+}
+
+async fn listen_shutdown() -> watch::Receiver<()> {
+    let shutdown_signals = [SignalKind::interrupt(), SignalKind::terminate()];
+    let mut futures = FuturesUnordered::new();
+
+    for signal_kind in shutdown_signals {
+        let mut listener = signal(signal_kind).unwrap();
+        futures.push(async move {
+            listener.recv().await;
+            signal_kind
+        });
+    }
+
+    let (tx, rx) = watch::channel(());
+
+    tokio::spawn(async move {
+        futures.next().await;
+        info!("Received shutdown signal");
+        tx.send(()).unwrap();
+    });
+
+    rx
 }

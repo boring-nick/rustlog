@@ -4,7 +4,7 @@ mod responders;
 mod schema;
 mod trace_layer;
 
-use crate::app::App;
+use crate::{app::App, ShutdownRx};
 use axum::{routing::get, Extension, Router, ServiceExt};
 use prometheus::{Encoder, TextEncoder};
 use std::{
@@ -12,9 +12,9 @@ use std::{
     str::FromStr,
 };
 use tower_http::{cors::CorsLayer, normalize_path::NormalizePath, trace::TraceLayer};
-use tracing::info;
+use tracing::{debug, info};
 
-pub async fn run(app: App<'static>) {
+pub async fn run(app: App<'static>, mut shutdown_rx: ShutdownRx) {
     let listen_address =
         parse_listen_addr(&app.config.listen_address).expect("Invalid listen address");
 
@@ -76,6 +76,10 @@ pub async fn run(app: App<'static>) {
 
     axum::Server::bind(&listen_address)
         .serve(app.into_make_service())
+        .with_graceful_shutdown(async move {
+            shutdown_rx.changed().await.ok();
+            debug!("Shutting down web task");
+        })
         .await
         .unwrap();
 }

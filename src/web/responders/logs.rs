@@ -4,7 +4,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use futures_util::stream;
+use futures::stream;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde_json::json;
 use tracing::warn;

@@ -4,6 +4,7 @@ use crate::{
     app::App,
     db::schema::Message,
     logs::{extract_channel_and_user_from_raw, extract_timestamp},
+    ShutdownRx,
 };
 use anyhow::anyhow;
 use chrono::Utc;
@@ -23,9 +24,10 @@ pub async fn run<C: LoginCredentials>(
     login_credentials: C,
     app: App<'_>,
     writer_tx: Sender<Message<'static>>,
+    shutdown_rx: ShutdownRx,
 ) {
     let bot = Bot::new(app, writer_tx);
-    bot.run(login_credentials).await;
+    bot.run(login_credentials, shutdown_rx).await;
 }
 
 struct Bot<'a> {
@@ -38,7 +40,7 @@ impl<'a> Bot<'a> {
         Self { app, writer_tx }
     }
 
-    pub async fn run<C: LoginCredentials>(self, login_credentials: C) {
+    pub async fn run<C: LoginCredentials>(self, login_credentials: C, mut shutdown_rx: ShutdownRx) {
         let client_config = ClientConfig::new_simple(login_credentials);
         let (mut receiver, client) = TwitchIRCClient::<SecureTCPTransport, C>::new(client_config);
 
@@ -56,9 +58,17 @@ impl<'a> Bot<'a> {
                     client.join(channel_login).expect("Failed to join channel");
                 }
 
-                while let Some(msg) = receiver.recv().await {
-                    if let Err(e) = self.handle_message(msg, &client).await {
-                        error!("Could not handle message: {e}");
+                loop {
+                    tokio::select! {
+                        Some(msg) = receiver.recv() => {
+                            if let Err(e) = self.handle_message(msg, &client).await {
+                                error!("Could not handle message: {e}");
+                            }
+                        }
+                        _ = shutdown_rx.changed() => {
+                            debug!("Shutting down bot task");
+                            break;
+                        }
                     }
                 }
             }
