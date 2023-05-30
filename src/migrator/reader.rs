@@ -1,10 +1,12 @@
-use crate::{error::Error, logs::schema::ChannelLogDateMap, Result};
+use crate::{error::Error, Result};
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
 use tokio::fs::{self, read_dir};
 use tracing::debug;
 
 pub const COMPRESSED_CHANNEL_FILE: &str = "channel.txt.gz";
 pub const UNCOMPRESSED_CHANNEL_FILE: &str = "channel.txt";
+
+type ChannelLogDateMap = BTreeMap<u32, BTreeMap<u32, Vec<u32>>>;
 
 #[derive(Debug, Clone)]
 pub struct LogsReader {

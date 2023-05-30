@@ -3,8 +3,8 @@ use std::time::Instant;
 use super::{
     responders::logs::{LogsResponse, LogsResponseType, ProcessedLogs, ProcessedLogsType},
     schema::{
-        AvailableLogDate, AvailableLogs, AvailableLogsParams, Channel, ChannelIdType,
-        ChannelLogsPath, ChannelParam, ChannelsList, LogsParams, UserLogsPath, UserParam,
+        AvailableLogs, AvailableLogsParams, Channel, ChannelIdType, ChannelLogsPath, ChannelParam,
+        ChannelsList, LogsParams, UserLogsPath, UserParam,
     },
 };
 use crate::{
@@ -159,41 +159,15 @@ pub async fn list_available_logs(
         ChannelParam::Channel(name) => app.get_user_id_by_name(&name).await?,
     };
 
-    let mut available_logs = if let Some(user) = user {
+    let available_logs = if let Some(user) = user {
         let user_id = match user {
             UserParam::UserId(id) => id,
             UserParam::User(name) => app.get_user_id_by_name(&name).await?,
         };
-        let user_logs = read_available_user_logs(&app.db, &channel_id, &user_id).await?;
-
-        let mut available_logs = Vec::new();
-        for (year, months) in user_logs {
-            let available_dates = months.into_iter().map(|month| AvailableLogDate {
-                year: year.to_string(),
-                month: month.to_string(),
-                day: None,
-            });
-            available_logs.extend(available_dates);
-        }
-        available_logs
+        read_available_user_logs(&app.db, &channel_id, &user_id).await?
     } else {
-        let channel_logs = read_available_channel_logs(&app.db, &channel_id).await?;
-
-        let mut available_logs = Vec::new();
-        for (year, months) in channel_logs {
-            for (month, days) in months {
-                for day in days {
-                    available_logs.push(AvailableLogDate {
-                        year: year.to_string(),
-                        month: month.to_string(),
-                        day: Some(day.to_string()),
-                    });
-                }
-            }
-        }
-        available_logs
+        read_available_channel_logs(&app.db, &channel_id).await?
     };
-    available_logs.reverse();
 
     if !available_logs.is_empty() {
         Ok(Json(AvailableLogs { available_logs }))

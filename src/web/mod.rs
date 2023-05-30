@@ -1,7 +1,7 @@
 mod frontend;
 mod handlers;
 mod responders;
-mod schema;
+pub mod schema;
 mod trace_layer;
 
 use crate::{app::App, ShutdownRx};

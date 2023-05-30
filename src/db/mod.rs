@@ -1,10 +1,9 @@
 pub mod schema;
 pub mod writer;
 
-use std::collections::BTreeMap;
-
 use crate::{
-    logs::schema::{ChannelLogDate, ChannelLogDateMap, UserLogDate, UserLogDateMap},
+    logs::schema::{ChannelLogDate, UserLogDate},
+    web::schema::AvailableLogDate,
     Result,
 };
 use chrono::{Datelike, NaiveDateTime};
@@ -46,55 +45,57 @@ pub async fn read_user(
 pub async fn read_available_channel_logs(
     db: &Client,
     channel_id: &str,
-) -> Result<ChannelLogDateMap> {
-    let mut years: ChannelLogDateMap = BTreeMap::new();
-
-    let mut cursor = db
+) -> Result<Vec<AvailableLogDate>> {
+    let timestamps: Vec<i32> = db
         .query(
             "SELECT DISTINCT toDateTime(toStartOfDay(timestamp)) AS date FROM message WHERE channel_id = ? ORDER BY date DESC",
         )
         .bind(channel_id)
-        .fetch::<i32>()?;
+        .fetch_all().await?;
 
-    while let Some(timestamp) = cursor.next().await? {
-        debug!("Fetched channel log date {timestamp}");
-        let naive =
-            NaiveDateTime::from_timestamp_opt(timestamp.into(), 0).expect("Invalid DateTime");
-        years
-            .entry(naive.year() as u32)
-            .or_default()
-            .entry(naive.month())
-            .or_default()
-            .push(naive.day());
-    }
+    let dates = timestamps
+        .into_iter()
+        .map(|timestamp| {
+            let naive =
+                NaiveDateTime::from_timestamp_opt(timestamp.into(), 0).expect("Invalid DateTime");
 
-    Ok(years)
+            AvailableLogDate {
+                year: naive.year().to_string(),
+                month: naive.month().to_string(),
+                day: Some(naive.day().to_string()),
+            }
+        })
+        .collect();
+
+    Ok(dates)
 }
 
 pub async fn read_available_user_logs(
     db: &Client,
     channel_id: &str,
     user_id: &str,
-) -> Result<UserLogDateMap> {
-    let mut years: UserLogDateMap = BTreeMap::new();
-
-    let mut cursor = db
+) -> Result<Vec<AvailableLogDate>> {
+    let timestamps: Vec<i32> = db
         .query("SELECT DISTINCT toDateTime(toStartOfMonth(timestamp)) AS date FROM message WHERE channel_id = ? AND user_id = ? ORDER BY date DESC")
         .bind(channel_id)
         .bind(user_id)
-        .fetch::<i32>()?;
+        .fetch_all().await?;
 
-    while let Some(timestamp) = cursor.next().await? {
-        debug!("Fetched user log date {timestamp}");
-        let naive =
-            NaiveDateTime::from_timestamp_opt(timestamp.into(), 0).expect("Invalid DateTime");
-        years
-            .entry(naive.year() as u32)
-            .or_default()
-            .push(naive.month());
-    }
+    let dates = timestamps
+        .into_iter()
+        .map(|timestamp| {
+            let naive =
+                NaiveDateTime::from_timestamp_opt(timestamp.into(), 0).expect("Invalid DateTime");
 
-    Ok(years)
+            AvailableLogDate {
+                year: naive.year().to_string(),
+                month: naive.month().to_string(),
+                day: None,
+            }
+        })
+        .collect();
+
+    Ok(dates)
 }
 
 pub async fn setup_db(db: &Client) -> Result<()> {

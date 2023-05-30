@@ -3,14 +3,8 @@ use anyhow::Context;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
-use std::{
-    collections::{BTreeMap, HashMap},
-    fmt::Display,
-};
+use std::{collections::HashMap, fmt::Display};
 use twitch_irc::message::{ClearChatAction, IRCMessage, ServerMessage};
-
-pub type ChannelLogDateMap = BTreeMap<u32, BTreeMap<u32, Vec<u32>>>;
-pub type UserLogDateMap = BTreeMap<u32, Vec<u32>>;
 
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
