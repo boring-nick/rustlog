@@ -2,6 +2,7 @@ pub mod schema;
 pub mod writer;
 
 use crate::{
+    error::Error,
     logs::schema::{ChannelLogDate, UserLogDate},
     web::schema::AvailableLogDate,
     Result,
@@ -21,6 +22,11 @@ pub async fn read_channel(
         .bind(log_date.to_string())
         .fetch_all()
         .await?;
+
+    if messages.is_empty() {
+        return Err(Error::NotFound);
+    }
+
     debug!("Read {} messages from DB", messages.len());
     Ok(messages)
 }
@@ -38,6 +44,11 @@ pub async fn read_user(
         .bind(format!("{}-{:0>2}-1", log_date.year, log_date.month))
         .fetch_all()
         .await?;
+
+    if messages.is_empty() {
+        return Err(Error::NotFound);
+    }
+
     debug!("Read {} messages from DB", messages.len());
     Ok(messages)
 }
