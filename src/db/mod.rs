@@ -51,7 +51,7 @@ pub async fn read_available_channel_logs(
 
     let mut cursor = db
         .query(
-            "SELECT DISTINCT toDateTime(toStartOfDay(timestamp)) FROM message WHERE channel_id = ?",
+            "SELECT DISTINCT toDateTime(toStartOfDay(timestamp)) AS date FROM message WHERE channel_id = ? ORDER BY date DESC",
         )
         .bind(channel_id)
         .fetch::<i32>()?;
@@ -79,7 +79,7 @@ pub async fn read_available_user_logs(
     let mut years: UserLogDateMap = BTreeMap::new();
 
     let mut cursor = db
-        .query("SELECT DISTINCT toDateTime(toStartOfMonth(timestamp)) FROM message WHERE channel_id = ? AND user_id = ?")
+        .query("SELECT DISTINCT toDateTime(toStartOfMonth(timestamp)) AS date FROM message WHERE channel_id = ? AND user_id = ? ORDER BY date DESC")
         .bind(channel_id)
         .bind(user_id)
         .fetch::<i32>()?;
