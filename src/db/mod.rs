@@ -9,6 +9,7 @@ use crate::{
 };
 use chrono::{Datelike, NaiveDateTime};
 use clickhouse::Client;
+use rand::{seq::IteratorRandom, thread_rng};
 use tracing::debug;
 
 pub async fn read_channel(
@@ -107,6 +108,65 @@ pub async fn read_available_user_logs(
         .collect();
 
     Ok(dates)
+}
+
+pub async fn read_random_user_line(db: &Client, channel_id: &str, user_id: &str) -> Result<String> {
+    let total_count = db
+        .query("SELECT count(*) FROM message WHERE channel_id = ? AND user_id = ? ")
+        .bind(channel_id)
+        .bind(user_id)
+        .fetch_one::<u64>()
+        .await?;
+
+    let offset = {
+        let mut rng = thread_rng();
+        (0..total_count).choose(&mut rng).ok_or(Error::NotFound)
+    }?;
+
+    let text = db
+        .query(
+            "WITH
+            (SELECT timestamp FROM message WHERE channel_id = ? AND user_id = ? LIMIT 1 OFFSET ?)
+            AS random_timestamp
+            SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND timestamp = random_timestamp",
+        )
+        .bind(channel_id)
+        .bind(user_id)
+        .bind(offset)
+        .bind(channel_id)
+        .bind(user_id)
+        .fetch_one::<String>()
+        .await?;
+
+    Ok(text)
+}
+
+pub async fn read_random_channel_line(db: &Client, channel_id: &str) -> Result<String> {
+    let total_count = db
+        .query("SELECT count(*) FROM message WHERE channel_id = ? ")
+        .bind(channel_id)
+        .fetch_one::<u64>()
+        .await?;
+
+    let offset = {
+        let mut rng = thread_rng();
+        (0..total_count).choose(&mut rng).ok_or(Error::NotFound)
+    }?;
+
+    let text = db
+        .query(
+            "WITH
+            (SELECT timestamp FROM message WHERE channel_id = ? LIMIT 1 OFFSET ?)
+            AS random_timestamp
+            SELECT raw FROM message WHERE channel_id = ? AND timestamp = random_timestamp",
+        )
+        .bind(channel_id)
+        .bind(offset)
+        .bind(channel_id)
+        .fetch_one::<String>()
+        .await?;
+
+    Ok(text)
 }
 
 pub async fn setup_db(db: &Client) -> Result<()> {

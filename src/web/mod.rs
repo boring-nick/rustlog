@@ -48,7 +48,7 @@ pub async fn run(app: App<'static>, mut shutdown_rx: ShutdownRx) {
             "/:channel_id_type/:channel/userid/:user/:year/:month",
             get(handlers::get_user_logs_by_id),
         )
-        /*.route(
+        .route(
             "/:channel_id_type/:channel/random",
             get(handlers::random_channel_line),
         )
@@ -59,7 +59,7 @@ pub async fn run(app: App<'static>, mut shutdown_rx: ShutdownRx) {
         .route(
             "/:channel_id_type/:channel/user/:user/random",
             get(handlers::random_user_line_by_name),
-        )*/
+        )
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace_layer::make_span_with)

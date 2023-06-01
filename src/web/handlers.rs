@@ -9,7 +9,10 @@ use super::{
 };
 use crate::{
     app::App,
-    db::{read_available_channel_logs, read_available_user_logs, read_channel, read_user},
+    db::{
+        read_available_channel_logs, read_available_user_logs, read_channel,
+        read_random_channel_line, read_random_user_line, read_user,
+    },
     error::Error,
     logs::schema::{ChannelLogDate, UserLogDate},
     Result,
@@ -225,16 +228,17 @@ fn redirect_to_latest_user_logs(
     Redirect::to(&new_uri)
 }
 
-/*pub async fn random_channel_line(// app: Extension<App<'_>>,
-    // Path((channel_id_type, channel)): Path<(ChannelIdType, String)>,
-    // Query(LogsParams { json, raw, reverse }): Query<LogsParams>,
+pub async fn random_channel_line(
+    app: Extension<App<'_>>,
+    Path((channel_id_type, channel)): Path<(ChannelIdType, String)>,
+    Query(LogsParams { json, raw, reverse }): Query<LogsParams>,
 ) -> Result<LogsResponse> {
-        let channel_id = match channel_id_type {
+    let channel_id = match channel_id_type {
         ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
         ChannelIdType::Id => channel,
     };
 
-    let random_line = app.logs.random_channel_line(&channel_id).await?;
+    let random_line = read_random_channel_line(&app.db, &channel_id).await?;
     let lines = vec![random_line];
 
     let response_type = if raw {
@@ -284,7 +288,7 @@ async fn random_user_line(
         ChannelIdType::Id => channel,
     };
 
-    let random_line = app.logs.random_user_line(&channel_id, &user_id).await?;
+    let random_line = read_random_user_line(&app.db, &channel_id, &user_id).await?;
     let lines = vec![random_line];
 
     let response_type = if raw {
@@ -303,4 +307,4 @@ async fn random_user_line(
         response_type,
         reverse,
     })
-}*/
+}
