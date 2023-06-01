@@ -121,8 +121,8 @@ impl Message {
 
                 Ok(Message {
                     text,
+                    display_name: username.clone(),
                     username,
-                    display_name: String::new(),
                     channel: clear_chat.channel_login,
                     timestamp: clear_chat.server_timestamp,
                     id: String::new(),

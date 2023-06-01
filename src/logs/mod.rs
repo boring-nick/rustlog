@@ -9,7 +9,13 @@ pub fn extract_channel_and_user_from_raw(
     tags.get("room-id")
         .and_then(|item| item.as_deref())
         .map(|channel_id| {
-            let user_id = tags.get("user-id").and_then(|user_id| user_id.as_deref());
+            let user_id = tags
+                .get("user-id")
+                .and_then(|user_id| user_id.as_deref())
+                .or_else(|| {
+                    tags.get("target-user-id")
+                        .and_then(|user_id| user_id.as_deref())
+                });
             (channel_id, user_id)
         })
 }
