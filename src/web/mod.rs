@@ -60,13 +60,13 @@ pub async fn run(app: App<'static>, mut shutdown_rx: ShutdownRx) {
             "/:channel_id_type/:channel/user/:user/random",
             get(handlers::random_user_line_by_name),
         )*/
-        .route("/metrics", get(metrics))
-        .layer(Extension(app))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace_layer::make_span_with)
                 .on_response(trace_layer::on_response),
         )
+        .route("/metrics", get(metrics))
+        .layer(Extension(app))
         .route("/assets/*asset", get(frontend::static_asset))
         .fallback(frontend::static_asset)
         .layer(cors);
