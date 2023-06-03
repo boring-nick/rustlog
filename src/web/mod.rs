@@ -5,69 +5,108 @@ pub mod schema;
 mod trace_layer;
 
 use crate::{app::App, ShutdownRx};
-use axum::{routing::get, Extension, Router, ServiceExt};
+use aide::{
+    axum::{
+        routing::{get, get_with},
+        ApiRouter, IntoApiResponse,
+    },
+    openapi::OpenApi,
+    redoc::Redoc,
+};
+use axum::{response::IntoResponse, Extension, Json, ServiceExt};
 use prometheus::{Encoder, TextEncoder};
 use std::{
     net::{AddrParseError, SocketAddr},
     str::FromStr,
+    sync::Arc,
 };
 use tower_http::{cors::CorsLayer, normalize_path::NormalizePath, trace::TraceLayer};
 use tracing::{debug, info};
 
 pub async fn run(app: App<'static>, mut shutdown_rx: ShutdownRx) {
+    aide::gen::on_error(|error| {
+        panic!("Could not generate docs: {error}");
+    });
+    aide::gen::extract_schemas(true);
+    aide::gen::infer_responses(true);
+
     let listen_address =
         parse_listen_addr(&app.config.listen_address).expect("Invalid listen address");
 
     let cors = CorsLayer::permissive();
 
-    let app = Router::new()
-        .route("/channels", get(handlers::get_channels))
-        .route("/list", get(handlers::list_available_logs))
-        .route(
+    let mut api = OpenApi::default();
+
+    let app = ApiRouter::new()
+        .api_route("/channels", get(handlers::get_channels))
+        .api_route("/list", get(handlers::list_available_logs))
+        .api_route(
             "/:channel_id_type/:channel",
-            get(handlers::redirect_to_latest_channel_logs),
+            get_with(handlers::redirect_to_latest_channel_logs, |op| {
+                op.description("Get latest channel logs")
+            }),
         )
         // For some reason axum considers it a path overlap if user id type is dynamic
-        .route(
+        .api_route(
             "/:channel_id_type/:channel/user/:user",
-            get(handlers::redirect_to_latest_user_name_logs),
+            get_with(handlers::redirect_to_latest_user_name_logs, |op| {
+                op.description("Get latest user logs")
+            }),
         )
-        .route(
+        .api_route(
             "/:channel_id_type/:channel/userid/:user",
-            get(handlers::redirect_to_latest_user_id_logs),
+            get_with(handlers::redirect_to_latest_user_id_logs, |op| {
+                op.description("Get latest user logs")
+            }),
         )
-        .route(
+        .api_route(
             "/:channel_id_type/:channel/:year/:month/:day",
-            get(handlers::get_channel_logs),
+            get_with(handlers::get_channel_logs, |op| {
+                op.description("Get channel logs from the given day")
+            }),
         )
-        .route(
+        .api_route(
             "/:channel_id_type/:channel/user/:user/:year/:month",
-            get(handlers::get_user_logs_by_name),
+            get_with(handlers::get_user_logs_by_name, |op| {
+                op.description("Get user logs in a channel from the given month")
+            }),
         )
-        .route(
+        .api_route(
             "/:channel_id_type/:channel/userid/:user/:year/:month",
-            get(handlers::get_user_logs_by_id),
+            get_with(handlers::get_user_logs_by_id, |op| {
+                op.description("Get user logs in a channel from the given month")
+            }),
         )
-        .route(
+        .api_route(
             "/:channel_id_type/:channel/random",
-            get(handlers::random_channel_line),
+            get_with(handlers::random_channel_line, |op| {
+                op.description("Get a random line from the channel's logs")
+            }),
         )
-        .route(
+        .api_route(
             "/:channel_id_type/:channel/userid/:user/random",
-            get(handlers::random_user_line_by_id),
+            get_with(handlers::random_user_line_by_id, |op| {
+                op.description("Get a random line from the user's logs in a channel")
+            }),
         )
-        .route(
+        .api_route(
             "/:channel_id_type/:channel/user/:user/random",
-            get(handlers::random_user_line_by_name),
+            get_with(handlers::random_user_line_by_name, |op| {
+                op.description("Get a random line from the user's logs in a channel")
+            }),
         )
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace_layer::make_span_with)
                 .on_response(trace_layer::on_response),
         )
+        .route("/openapi.json", get(serve_openapi))
+        .route("/docs", Redoc::new("/openapi.json").axum_route())
         .route("/metrics", get(metrics))
-        .layer(Extension(app))
         .route("/assets/*asset", get(frontend::static_asset))
+        .finish_api(&mut api)
+        .layer(Extension(Arc::new(api)))
+        .layer(Extension(app))
         .fallback(frontend::static_asset)
         .layer(cors);
     let app = NormalizePath::trim_trailing_slash(app);
@@ -100,4 +139,7 @@ async fn metrics() -> Vec<u8> {
     encoder.encode(&metric_families, &mut buffer).unwrap();
 
     buffer
+}
+async fn serve_openapi(Extension(api): Extension<Arc<OpenApi>>) -> impl IntoApiResponse {
+    Json(api.as_ref()).into_response()
 }

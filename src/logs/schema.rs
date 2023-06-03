@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use anyhow::Context;
 use chrono::{DateTime, Utc};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_repr::Serialize_repr;
 use std::{collections::HashMap, fmt::Display};
@@ -8,7 +9,7 @@ use twitch_irc::message::{ClearChatAction, IRCMessage, ServerMessage};
 
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, JsonSchema)]
 pub struct ChannelLogDate {
     pub year: u32,
     pub month: u32,
@@ -41,16 +42,18 @@ pub enum ChannelIdentifier<'a> {
     ChannelId(&'a str),
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Message {
     pub text: String,
     pub username: String,
     pub display_name: String,
     pub channel: String,
+    #[schemars(with = "String")]
     pub timestamp: DateTime<Utc>,
     pub id: String,
     pub raw: String,
+    #[schemars(with = "i8")]
     pub r#type: MessageType,
     pub tags: HashMap<String, String>,
 }

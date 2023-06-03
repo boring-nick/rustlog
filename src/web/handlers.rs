@@ -4,7 +4,7 @@ use super::{
     responders::logs::{LogsResponse, LogsResponseType, ProcessedLogs, ProcessedLogsType},
     schema::{
         AvailableLogs, AvailableLogsParams, Channel, ChannelIdType, ChannelLogsPath, ChannelParam,
-        ChannelsList, LogsParams, UserLogsPath, UserParam,
+        ChannelsList, LogsParams, LogsPathChannel, UserLogsPath, UserParam,
     },
 };
 use crate::{
@@ -48,17 +48,20 @@ pub async fn get_channel_logs(
 ) -> Result<LogsResponse> {
     debug!("Params: {logs_params:?}");
 
-    let channel_id = match channel_log_params.channel_id_type {
+    let channel_id = match channel_log_params.channel_info.channel_id_type {
         ChannelIdType::Name => app
-            .get_users(vec![], vec![channel_log_params.channel.clone()])
+            .get_users(
+                vec![],
+                vec![channel_log_params.channel_info.channel.clone()],
+            )
             .await?
             .into_keys()
             .next()
             .ok_or(Error::NotFound)?,
-        ChannelIdType::Id => channel_log_params.channel.clone(),
+        ChannelIdType::Id => channel_log_params.channel_info.channel.clone(),
     };
 
-    let log_date = ChannelLogDate::try_from(&channel_log_params)?;
+    let log_date = ChannelLogDate::try_from(channel_log_params.date)?;
     debug!("Querying logs for date {log_date:?}");
 
     let started_at = Instant::now();
@@ -119,10 +122,10 @@ async fn get_user_logs(
 ) -> Result<LogsResponse> {
     let log_date = UserLogDate::try_from(&user_logs_path)?;
 
-    let channel_id = match user_logs_path.channel_id_type {
+    let channel_id = match user_logs_path.channel_info.channel_id_type {
         ChannelIdType::Name => {
             let (id, _) = app
-                .get_users(vec![], vec![user_logs_path.channel])
+                .get_users(vec![], vec![user_logs_path.channel_info.channel])
                 .await?
                 .into_iter()
                 .next()
@@ -130,7 +133,7 @@ async fn get_user_logs(
             id
         }
 
-        ChannelIdType::Id => user_logs_path.channel,
+        ChannelIdType::Id => user_logs_path.channel_info.channel,
     };
 
     let lines = read_user(&app.db, &channel_id, &user_id, log_date).await?;
@@ -180,7 +183,10 @@ pub async fn list_available_logs(
 }
 
 pub async fn redirect_to_latest_channel_logs(
-    Path((channel_id_type, channel)): Path<(String, String)>,
+    Path(LogsPathChannel {
+        channel_id_type,
+        channel,
+    }): Path<LogsPathChannel>,
     RawQuery(query): RawQuery,
 ) -> Redirect {
     let today = Utc::now();
