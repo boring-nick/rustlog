@@ -185,12 +185,10 @@ impl Display for Message {
         let username = &self.username;
         let text = &self.text;
 
-        let base = format!("[{timestamp}] #{channel}");
-
         if !username.is_empty() {
-            write!(f, "{base} {username}: {text}")
+            write!(f, "[{timestamp}] #{channel} {username}: {text}")
         } else {
-            write!(f, "{base} {text}")
+            write!(f, "[{timestamp}] #{channel} {text}")
         }
     }
 }

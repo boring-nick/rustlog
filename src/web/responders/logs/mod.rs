@@ -1,3 +1,5 @@
+mod join_iter;
+
 use crate::{error::Error, logs::schema::Message};
 use aide::OperationOutput;
 use axum::{
@@ -7,10 +9,12 @@ use axum::{
 };
 use futures::stream;
 use indexmap::IndexMap;
+use join_iter::JoinIter;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use schemars::JsonSchema;
 use serde::Serialize;
-use tracing::warn;
+use std::time::Instant;
+use tracing::{debug, warn};
 
 pub struct LogsResponse {
     pub response_type: LogsResponseType,
@@ -79,12 +83,18 @@ impl IntoResponse for LogsResponse {
                 }
 
                 match processed_logs.logs_type {
-                    ProcessedLogsType::Text => messages
-                        .into_iter()
-                        .map(|message| message.to_string())
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                        .into_response(),
+                    ProcessedLogsType::Text => {
+                        let started_at = Instant::now();
+
+                        let text = messages.iter().join('\n').to_string();
+
+                        debug!(
+                            "Collecting messages into a response took {}ms",
+                            started_at.elapsed().as_millis()
+                        );
+
+                        text.into_response()
+                    }
                     ProcessedLogsType::Json => Json(JsonLogsResponse { messages }).into_response(),
                 }
             }
