@@ -1,6 +1,6 @@
-use crate::{config::Config, Result};
+use crate::{config::Config, error::Error, Result};
 use anyhow::Context;
-use dashmap::DashMap;
+use dashmap::{DashMap, DashSet};
 use std::{collections::HashMap, sync::Arc};
 use tracing::debug;
 use twitch_api2::{helix::users::GetUsersRequest, twitch_oauth2::AppAccessToken, HelixClient};
@@ -10,6 +10,7 @@ pub struct App<'a> {
     pub helix_client: HelixClient<'a, reqwest::Client>,
     pub token: Arc<AppAccessToken>,
     pub users: Arc<DashMap<String, String>>, // User id, login name
+    pub optout_codes: Arc<DashSet<String>>,
     pub db: Arc<clickhouse::Client>,
     pub config: Arc<Config>,
 }
@@ -101,5 +102,19 @@ impl App<'_> {
 
             Ok(user_id)
         }
+    }
+
+    pub fn check_opted_out(&self, channel_id: &str, user_id: Option<&str>) -> Result<()> {
+        if self.config.opt_out.contains_key(channel_id) {
+            return Err(Error::OptedOut);
+        }
+
+        if let Some(user_id) = user_id {
+            if self.config.opt_out.contains_key(user_id) {
+                return Err(Error::OptedOut);
+            }
+        }
+
+        Ok(())
     }
 }

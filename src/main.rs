@@ -91,6 +91,7 @@ async fn run(config: Config, db: clickhouse::Client) -> anyhow::Result<()> {
         users: Arc::new(DashMap::new()),
         config: Arc::new(config),
         db: Arc::new(db),
+        optout_codes: Arc::default(),
     };
 
     let login_credentials = StaticLoginCredentials::anonymous();

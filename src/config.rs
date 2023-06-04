@@ -1,4 +1,5 @@
 use anyhow::Context;
+use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, sync::RwLock};
 use tokio::fs;
@@ -21,6 +22,8 @@ pub struct Config {
     pub client_id: String,
     pub client_secret: String,
     pub admins: Vec<String>,
+    #[serde(default)]
+    pub opt_out: DashMap<String, bool>,
 }
 
 impl Config {

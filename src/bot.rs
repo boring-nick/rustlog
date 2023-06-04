@@ -6,7 +6,7 @@ use crate::{
     logs::{extract_channel_and_user_from_raw, extract_timestamp},
     ShutdownRx,
 };
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use chrono::Utc;
 use lazy_static::lazy_static;
 use prometheus::{register_int_counter_vec, IntCounterVec};
@@ -98,7 +98,7 @@ impl<'a> Bot<'a> {
             trace!("Processing message {}", privmsg.message_text);
             if let Some(cmd) = privmsg.message_text.strip_prefix(COMMAND_PREFIX) {
                 if self.app.config.admins.contains(&privmsg.sender.login) {
-                    self.handle_command(cmd, client).await?;
+                    self.handle_command(cmd, client, &privmsg.sender.id).await?;
                 } else {
                     info!(
                         "User {} is not an admin to use commands",
@@ -143,6 +143,7 @@ impl<'a> Bot<'a> {
         &self,
         cmd: &str,
         client: &TwitchClient<C>,
+        sender_id: &str,
     ) -> anyhow::Result<()> {
         debug!("Processing command {cmd}");
         let mut split = cmd.split_whitespace();
@@ -158,11 +159,26 @@ impl<'a> Bot<'a> {
                     self.update_channels(client, &args, ChannelAction::Part)
                         .await?
                 }
+                "optout" => {
+                    self.optout_user(&args, sender_id).await?;
+                }
                 _ => (),
             }
         }
 
         Ok(())
+    }
+
+    async fn optout_user(&self, args: &[&str], sender_id: &str) -> anyhow::Result<()> {
+        let code = args.first().context("No optout code provided")?;
+        if self.app.optout_codes.remove(*code).is_some() {
+            self.app.config.opt_out.insert(sender_id.to_owned(), true);
+            self.app.config.save().await?;
+            info!("User {sender_id} opted out");
+            Ok(())
+        } else {
+            Err(anyhow!("Invalid optout code"))
+        }
     }
 
     async fn update_channels<C: LoginCredentials>(
