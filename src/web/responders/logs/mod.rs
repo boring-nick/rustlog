@@ -10,11 +10,12 @@ use axum::{
 use futures::stream;
 use indexmap::IndexMap;
 use join_iter::JoinIter;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use schemars::JsonSchema;
 use serde::Serialize;
 use std::time::Instant;
 use tracing::{debug, warn};
+use twitch_irc::message::IRCMessage;
 
 pub struct LogsResponse {
     pub response_type: LogsResponseType,
@@ -27,21 +28,21 @@ pub enum LogsResponseType {
 }
 
 pub struct ProcessedLogs {
-    pub messages: Vec<Message>,
+    pub messages: Vec<(IRCMessage, String)>,
     pub logs_type: ProcessedLogsType,
 }
 
 #[derive(Serialize, JsonSchema)]
-pub struct JsonLogsResponse {
-    pub messages: Vec<Message>,
+pub struct JsonLogsResponse<'a> {
+    pub messages: Vec<Message<'a>>,
 }
 
 impl ProcessedLogs {
     pub fn parse_raw(lines: Vec<String>, logs_type: ProcessedLogsType) -> Self {
         let messages = lines
             .into_par_iter()
-            .filter_map(|line| match Message::parse_from_raw_irc(line) {
-                Ok(msg) => Some(msg),
+            .filter_map(|raw| match IRCMessage::parse(&raw) {
+                Ok(msg) => Some((msg, raw)),
                 Err(err) => {
                     warn!("Could not parse message: {err:#}");
                     None
@@ -77,10 +78,23 @@ impl IntoResponse for LogsResponse {
                 StreamBody::new(stream).into_response()
             }
             LogsResponseType::Processed(processed_logs) => {
-                let mut messages = processed_logs.messages;
+                let mut irc_messages = processed_logs.messages;
                 if self.reverse {
-                    messages.reverse();
+                    irc_messages.reverse();
                 }
+
+                let messages = irc_messages
+                    .par_iter()
+                    .filter_map(|(irc_message, raw)| {
+                        match Message::from_irc_message(irc_message, raw) {
+                            Ok(message) => Some(message),
+                            Err(err) => {
+                                warn!("Could not parse message: {err}, raw irc: {raw}");
+                                None
+                            }
+                        }
+                    })
+                    .collect::<Vec<_>>();
 
                 match processed_logs.logs_type {
                     ProcessedLogsType::Text => {
