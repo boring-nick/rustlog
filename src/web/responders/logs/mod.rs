@@ -1,13 +1,11 @@
 mod join_iter;
 
-use crate::{error::Error, logs::schema::Message};
+use crate::logs::schema::Message;
 use aide::OperationOutput;
 use axum::{
-    body::StreamBody,
     response::{IntoResponse, Response},
     Json,
 };
-use futures::stream;
 use indexmap::IndexMap;
 use join_iter::JoinIter;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
@@ -69,12 +67,7 @@ impl IntoResponse for LogsResponse {
                     lines.reverse();
                 }
 
-                let lines = lines
-                    .into_iter()
-                    .flat_map(|line| vec![Ok::<_, Error>(line), Ok("\n".to_owned())]);
-
-                let stream = stream::iter(lines);
-                StreamBody::new(stream).into_response()
+                lines.into_iter().join('\n').to_string().into_response()
             }
             LogsResponseType::Processed(processed_logs) => {
                 let mut messages = processed_logs.messages;
