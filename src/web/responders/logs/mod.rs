@@ -3,16 +3,22 @@ mod join_iter;
 use crate::logs::schema::Message;
 use aide::OperationOutput;
 use axum::{
+    http::HeaderValue,
     response::{IntoResponse, Response},
     Json,
 };
 use indexmap::IndexMap;
 use join_iter::JoinIter;
+use mime_guess::mime;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use reqwest::header;
 use schemars::JsonSchema;
 use serde::Serialize;
 use std::time::Instant;
 use tracing::{debug, warn};
+
+/// Rough estimation of how big a single message is in JSON format
+const JSON_MESSAGE_SIZE: usize = 1024 * 1024;
 
 pub struct LogsResponse {
     pub response_type: LogsResponseType,
@@ -88,7 +94,32 @@ impl IntoResponse for LogsResponse {
 
                         text.into_response()
                     }
-                    ProcessedLogsType::Json => Json(JsonLogsResponse { messages }).into_response(),
+                    ProcessedLogsType::Json => {
+                        let started_at = Instant::now();
+
+                        let json_response = JsonLogsResponse { messages };
+
+                        let mut buf =
+                            Vec::with_capacity(JSON_MESSAGE_SIZE * json_response.messages.len());
+                        serde_json::to_writer(&mut buf, &json_response)
+                            .expect("Serialization error");
+
+                        let response = (
+                            [(
+                                header::CONTENT_TYPE,
+                                HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()),
+                            )],
+                            buf,
+                        )
+                            .into_response();
+
+                        debug!(
+                            "Building JSON response took {}ms",
+                            started_at.elapsed().as_millis()
+                        );
+
+                        response
+                    }
                 }
             }
         }
