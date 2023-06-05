@@ -17,5 +17,8 @@ pub enum Command {
         /// List of channel ids to migrate (None specified = migrate all)
         #[clap(short, long, value_parser)]
         channel_id: Vec<String>,
+        /// Parallel migration jobs
+        #[clap(short, long, default_value_t = 1)]
+        jobs: usize,
     },
 }
