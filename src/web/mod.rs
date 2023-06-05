@@ -7,7 +7,7 @@ mod trace_layer;
 use crate::{app::App, ShutdownRx};
 use aide::{
     axum::{
-        routing::{get, get_with},
+        routing::{get, get_with, post},
         ApiRouter, IntoApiResponse,
     },
     openapi::OpenApi,
@@ -95,6 +95,7 @@ pub async fn run(app: App<'static>, mut shutdown_rx: ShutdownRx) {
                 op.description("Get a random line from the user's logs in a channel")
             }),
         )
+        .api_route("/optout", post(handlers::optout))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace_layer::make_span_with)

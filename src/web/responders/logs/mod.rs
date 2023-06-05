@@ -1,21 +1,25 @@
 mod join_iter;
 
-use crate::{error::Error, logs::schema::Message};
+use crate::logs::schema::Message;
 use aide::OperationOutput;
 use axum::{
-    body::StreamBody,
+    http::HeaderValue,
     response::{IntoResponse, Response},
     Json,
 };
-use futures::stream;
 use indexmap::IndexMap;
 use join_iter::JoinIter;
+use mime_guess::mime;
 use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use reqwest::header;
 use schemars::JsonSchema;
 use serde::Serialize;
 use std::time::Instant;
 use tracing::{debug, warn};
 use twitch_irc::message::IRCMessage;
+
+/// Rough estimation of how big a single message is in JSON format
+const JSON_MESSAGE_SIZE: usize = 1024 * 1024;
 
 pub struct LogsResponse {
     pub response_type: LogsResponseType,
@@ -70,12 +74,7 @@ impl IntoResponse for LogsResponse {
                     lines.reverse();
                 }
 
-                let lines = lines
-                    .into_iter()
-                    .flat_map(|line| vec![Ok::<_, Error>(line), Ok("\n".to_owned())]);
-
-                let stream = stream::iter(lines);
-                StreamBody::new(stream).into_response()
+                lines.into_iter().join('\n').to_string().into_response()
             }
             LogsResponseType::Processed(processed_logs) => {
                 let mut irc_messages = processed_logs.messages;
@@ -109,7 +108,32 @@ impl IntoResponse for LogsResponse {
 
                         text.into_response()
                     }
-                    ProcessedLogsType::Json => Json(JsonLogsResponse { messages }).into_response(),
+                    ProcessedLogsType::Json => {
+                        let started_at = Instant::now();
+
+                        let json_response = JsonLogsResponse { messages };
+
+                        let mut buf =
+                            Vec::with_capacity(JSON_MESSAGE_SIZE * json_response.messages.len());
+                        serde_json::to_writer(&mut buf, &json_response)
+                            .expect("Serialization error");
+
+                        let response = (
+                            [(
+                                header::CONTENT_TYPE,
+                                HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()),
+                            )],
+                            buf,
+                        )
+                            .into_response();
+
+                        debug!(
+                            "Building JSON response took {}ms",
+                            started_at.elapsed().as_millis()
+                        );
+
+                        response
+                    }
                 }
             }
         }

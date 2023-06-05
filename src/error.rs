@@ -20,6 +20,8 @@ pub enum Error {
     Internal,
     #[error("Database error")]
     Clickhouse(#[from] clickhouse::error::Error),
+    #[error("User or channel opted out")]
+    OptedOut,
     #[error("Not found")]
     NotFound,
 }
@@ -33,6 +35,7 @@ impl IntoResponse for Error {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
             Error::ParseInt(_) | Error::InvalidParam(_) => StatusCode::BAD_REQUEST,
+            Error::OptedOut => StatusCode::FORBIDDEN,
             Error::NotFound => StatusCode::NOT_FOUND,
         };
 
@@ -73,6 +76,13 @@ impl OperationOutput for Error {
                     Some(400),
                     aide::openapi::Response {
                         description: "The request is invalid".to_owned(),
+                        ..res.clone()
+                    },
+                ),
+                (
+                    Some(403),
+                    aide::openapi::Response {
+                        description: Error::OptedOut.to_string(),
                         ..res.clone()
                     },
                 ),

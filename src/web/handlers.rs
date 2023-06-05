@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use super::{
     responders::logs::{LogsResponse, LogsResponseType, ProcessedLogs, ProcessedLogsType},
@@ -23,6 +23,7 @@ use axum::{
     Extension, Json,
 };
 use chrono::{Datelike, Utc};
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use tracing::debug;
 
 pub async fn get_channels(app: Extension<App<'_>>) -> Json<ChannelsList> {
@@ -60,6 +61,8 @@ pub async fn get_channel_logs(
             .ok_or(Error::NotFound)?,
         ChannelIdType::Id => channel_log_params.channel_info.channel.clone(),
     };
+
+    app.check_opted_out(&channel_id, None)?;
 
     let log_date = ChannelLogDate::try_from(channel_log_params.date)?;
     debug!("Querying logs for date {log_date:?}");
@@ -135,6 +138,8 @@ async fn get_user_logs(
 
         ChannelIdType::Id => user_logs_path.channel_info.channel,
     };
+
+    app.check_opted_out(&channel_id, Some(&user_id))?;
 
     let lines = read_user(&app.db, &channel_id, &user_id, log_date).await?;
 
@@ -313,4 +318,24 @@ async fn random_user_line(
         response_type,
         reverse,
     })
+}
+
+pub async fn optout(app: Extension<App<'_>>) -> Json<String> {
+    let mut rng = thread_rng();
+    let optout_code: String = (0..5).map(|_| rng.sample(Alphanumeric) as char).collect();
+
+    app.optout_codes.insert(optout_code.clone());
+
+    {
+        let codes = app.optout_codes.clone();
+        let optout_code = optout_code.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            if codes.remove(&optout_code).is_some() {
+                debug!("Dropping optout code {optout_code}");
+            }
+        });
+    }
+
+    Json(optout_code)
 }
