@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use chrono::TimeZone;
 use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
@@ -7,7 +7,7 @@ use serde_repr::Serialize_repr;
 use std::str::FromStr;
 use std::{collections::HashMap, fmt::Display};
 use strum::EnumString;
-use twitch_irc::message::IRCMessage;
+use twitch_irc::message::{IRCMessage, IRCPrefix};
 
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
@@ -203,6 +203,7 @@ impl<'a> Message<'a> {
             .unwrap_or("<missing text param>");
 
         let display_name = extract_tag(&tags, "display-name");
+        let username = try_get_prefix_nickname(irc_message)?;
         let id = extract_tag(&tags, "id");
 
         let raw_timestamp = extract_tag(&tags, "tmi-sent-ts")
@@ -215,7 +216,7 @@ impl<'a> Message<'a> {
 
         Ok(Self {
             text,
-            username: display_name, // TODO
+            username,
             display_name,
             channel,
             timestamp,
@@ -235,13 +236,25 @@ impl<'a> Display for Message<'a> {
         let text = &self.text;
 
         if !username.is_empty() {
-            write!(f, "[{timestamp}] #{channel} {username}: {text}")
+            write!(f, "[{timestamp}] {channel} {username}: {text}")
         } else {
-            write!(f, "[{timestamp}] #{channel} {text}")
+            write!(f, "[{timestamp}] {channel} {text}")
         }
     }
 }
 
 fn extract_tag<'a>(tags: &HashMap<&'a str, &'a str>, key: &str) -> &'a str {
     tags.get(key).copied().unwrap_or_default()
+}
+
+fn try_get_prefix_nickname(msg: &IRCMessage) -> anyhow::Result<&str> {
+    match &msg.prefix {
+        None => Err(anyhow!("Missing prefix on a message")),
+        Some(IRCPrefix::HostOnly { host: _ }) => Err(anyhow!("Missing nickname on a message")),
+        Some(IRCPrefix::Full {
+            nick,
+            user: _,
+            host: _,
+        }) => Ok(nick),
+    }
 }
