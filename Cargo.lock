@@ -1351,6 +1351,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "twitch",
  "twitch-irc",
  "twitch_api2",
 ]
@@ -1925,6 +1926,11 @@ name = "try-lock"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
+
+[[package]]
+name = "twitch"
+version = "0.1.0"
+source = "git+https://github.com/jprochazk/twitch-rs?branch=new-parser#aa271629a43d68a7121b44aa500f971eb6e513e0"
 
 [[package]]
 name = "twitch-irc"

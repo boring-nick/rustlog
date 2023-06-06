@@ -16,7 +16,6 @@ use schemars::JsonSchema;
 use serde::Serialize;
 use std::time::Instant;
 use tracing::{debug, warn};
-use twitch_irc::message::IRCMessage;
 
 /// Rough estimation of how big a single message is in JSON format
 const JSON_MESSAGE_SIZE: usize = 1024 * 1024;
@@ -32,7 +31,7 @@ pub enum LogsResponseType {
 }
 
 pub struct ProcessedLogs {
-    pub messages: Vec<(IRCMessage, String)>,
+    pub messages: Vec<twitch::Message>,
     pub logs_type: ProcessedLogsType,
 }
 
@@ -45,10 +44,10 @@ impl ProcessedLogs {
     pub fn parse_raw(lines: Vec<String>, logs_type: ProcessedLogsType) -> Self {
         let messages = lines
             .into_par_iter()
-            .filter_map(|raw| match IRCMessage::parse(&raw) {
-                Ok(msg) => Some((msg, raw)),
-                Err(err) => {
-                    warn!("Could not parse message: {err:#}");
+            .filter_map(|raw| match twitch::Message::parse(raw) {
+                Some(msg) => Some(msg),
+                None => {
+                    warn!("Could not parse message");
                     None
                 }
             })
@@ -84,13 +83,11 @@ impl IntoResponse for LogsResponse {
 
                 let messages = irc_messages
                     .par_iter()
-                    .filter_map(|(irc_message, raw)| {
-                        match Message::from_irc_message(irc_message, raw) {
-                            Ok(message) => Some(message),
-                            Err(err) => {
-                                warn!("Could not parse message: {err}, raw irc: {raw}");
-                                None
-                            }
+                    .filter_map(|irc_message| match Message::from_irc_message(irc_message) {
+                        Ok(message) => Some(message),
+                        Err(err) => {
+                            warn!("Could not parse message: {err}, irc: {:?}", irc_message);
+                            None
                         }
                     })
                     .collect::<Vec<_>>();

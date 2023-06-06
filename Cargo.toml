@@ -52,6 +52,7 @@ twitch_api2 = { version = "0.6.1", features = [
     "helix",
     "twitch_oauth2",
 ] }
+twitch = { git = "https://github.com/jprochazk/twitch-rs", branch = "new-parser" }
 
 [dev-dependencies]
 pretty_assertions = "1.2.1"
