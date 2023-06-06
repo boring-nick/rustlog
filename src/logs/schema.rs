@@ -44,7 +44,7 @@ pub enum ChannelIdentifier<'a> {
     ChannelId(&'a str),
 }
 
-#[derive(Serialize, JsonSchema)]
+#[derive(Serialize, JsonSchema, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Message<'a> {
     pub text: Cow<'a, str>,
@@ -60,7 +60,7 @@ pub struct Message<'a> {
     pub tags: HashMap<&'a str, Cow<'a, str>>,
 }
 
-#[derive(Serialize_repr, EnumString, Debug)]
+#[derive(Serialize_repr, EnumString, Debug, PartialEq)]
 #[repr(i8)]
 #[strum(serialize_all = "UPPERCASE")]
 pub enum MessageType {
@@ -77,7 +77,10 @@ pub enum MessageType {
 impl<'a> Message<'a> {
     pub fn from_irc_message(irc_message: &'a twitch::Message) -> anyhow::Result<Self> {
         let tags = irc_message.tags().context("Message has no tags")?;
-        let channel = irc_message.channel().context("Missing channel")?;
+        let channel = irc_message
+            .channel()
+            .context("Missing channel")?
+            .trim_start_matches('#');
 
         let raw_timestamp = tags
             .get(&Tag::TmiSentTs)
@@ -107,7 +110,7 @@ impl<'a> Message<'a> {
                     .context("Message has no prefix")?
                     .nick
                     .context("Missing nickname")?;
-                let id = *tags.get(&Tag::Id).context("Missing message id tag")?;
+                let id = tags.get(&Tag::Id).map(|item| *item).unwrap_or_default();
 
                 Ok(Self {
                     text: Cow::Borrowed(text),
@@ -223,4 +226,49 @@ fn extract_message_text(message_text: &str) -> &str {
     }
 
     message_text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Message, MessageType};
+    use chrono::{TimeZone, Utc};
+    use pretty_assertions::assert_eq;
+    use std::borrow::Cow;
+
+    #[test]
+    fn parse_old_message() {
+        let data = "@badges=;color=;display-name=Snusbot;emotes=;mod=0;room-id=22484632;subscriber=0;tmi-sent-ts=1489263601000;turbo=0;user-id=62541963;user-type= :snusbot!snusbot@snusbot.tmi.twitch.tv PRIVMSG #forsen :prasoc won 10 points in roulette and now has 2838 points! forsenPls";
+        let irc_message = twitch::Message::parse(data).unwrap();
+        let message = Message::from_irc_message(&irc_message).unwrap();
+        let expected_message = Message {
+            text: Cow::Borrowed(
+                "prasoc won 10 points in roulette and now has 2838 points! forsenPls",
+            ),
+            username: "snusbot",
+            display_name: "Snusbot",
+            channel: "forsen",
+            timestamp: Utc.timestamp_millis_opt(1489263601000).unwrap(),
+            id: "",
+            raw: data,
+            r#type: MessageType::PrivMsg,
+            tags: [
+                ("mod", "0"),
+                ("color", ""),
+                ("badges", ""),
+                ("turbo", "0"),
+                ("subscriber", "0"),
+                ("user-id", "62541963"),
+                ("tmi-sent-ts", "1489263601000"),
+                ("room-id", "22484632"),
+                ("user-type", ""),
+                ("display-name", "Snusbot"),
+                ("emotes", ""),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k, Cow::Borrowed(v)))
+            .collect(),
+        };
+
+        assert_eq!(message, expected_message);
+    }
 }
