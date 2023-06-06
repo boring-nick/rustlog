@@ -57,7 +57,7 @@ pub struct Message<'a> {
     pub raw: &'a str,
     #[schemars(with = "i8")]
     pub r#type: MessageType,
-    pub tags: HashMap<&'a str, &'a str>,
+    pub tags: HashMap<&'a str, Cow<'a, str>>,
 }
 
 #[derive(Serialize_repr, EnumString, Debug)]
@@ -91,7 +91,7 @@ impl<'a> Message<'a> {
 
         let response_tags = tags
             .into_iter()
-            .map(|(key, value)| (key.as_str(), *value))
+            .map(|(key, value)| (key.as_str(), Cow::Borrowed(*value)))
             .collect();
 
         match irc_message.command() {
@@ -172,6 +172,11 @@ impl<'a> Message<'a> {
                     .context("Missing display name tag")?;
                 let username = *tags.get(&Tag::Login).context("Missing login tag")?;
                 let id = *tags.get(&Tag::Id).context("Missing message id tag")?;
+
+                let response_tags = response_tags
+                    .into_iter()
+                    .map(|(key, value)| (key, Cow::Owned(twitch::unescape(&value))))
+                    .collect();
 
                 Ok(Message {
                     text,
