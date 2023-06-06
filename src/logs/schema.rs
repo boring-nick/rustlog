@@ -126,6 +126,7 @@ impl<'a> Message<'a> {
 
                 let text = match irc_message.params() {
                     Some(user_login) => {
+                        let user_login = extract_message_text(user_login);
                         username = Some(user_login);
 
                         match tags.get(&Tag::BanDuration) {
