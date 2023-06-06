@@ -73,7 +73,8 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::Migrate {
             source_dir,
             channel_id,
-        }) => migrate(db, source_dir, channel_id).await,
+            jobs,
+        }) => migrate(db, source_dir, channel_id, jobs).await,
     }
 }
 
@@ -138,9 +139,10 @@ async fn migrate(
     db: clickhouse::Client,
     source_logs_path: String,
     channel_ids: Vec<String>,
+    jobs: usize,
 ) -> anyhow::Result<()> {
-    let migrator = Migrator::new(db, &source_logs_path, channel_ids).await?;
-    migrator.run().await
+    let migrator = Migrator::new(db, source_logs_path, channel_ids).await?;
+    migrator.run(jobs).await
 }
 
 async fn generate_token(config: &Config) -> anyhow::Result<AppAccessToken> {
