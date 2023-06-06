@@ -26,7 +26,7 @@ pub enum ChannelIdType {
 impl Display for ChannelIdType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
-            ChannelIdType::Name => "channnel",
+            ChannelIdType::Name => "channel",
             ChannelIdType::Id => "channelid",
         };
         f.write_str(s)
