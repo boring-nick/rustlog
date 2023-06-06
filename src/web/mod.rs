@@ -14,7 +14,7 @@ use aide::{
     redoc::Redoc,
 };
 use axum::{response::IntoResponse, Extension, Json, ServiceExt};
-use prometheus::{Encoder, TextEncoder};
+use prometheus::TextEncoder;
 use std::{
     net::{AddrParseError, SocketAddr},
     str::FromStr,
@@ -132,14 +132,11 @@ pub fn parse_listen_addr(addr: &str) -> Result<SocketAddr, AddrParseError> {
     }
 }
 
-async fn metrics() -> Vec<u8> {
+async fn metrics() -> String {
     let metric_families = prometheus::gather();
 
     let encoder = TextEncoder::new();
-    let mut buffer = Vec::new();
-    encoder.encode(&metric_families, &mut buffer).unwrap();
-
-    buffer
+    encoder.encode_to_string(&metric_families).unwrap()
 }
 async fn serve_openapi(Extension(api): Extension<Arc<OpenApi>>) -> impl IntoApiResponse {
     Json(api.as_ref()).into_response()
