@@ -1,16 +1,22 @@
 use super::schema::Message;
 use crate::ShutdownRx;
-use clickhouse::{inserter::Inserter, Client};
+use anyhow::{anyhow, Context};
+use clickhouse::Client;
 use lazy_static::lazy_static;
 use prometheus::{register_int_gauge, IntGauge};
 use std::time::Duration;
 use tokio::{
     sync::mpsc::{channel, Sender},
     task::JoinHandle,
+    time::sleep,
 };
+use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tracing::{debug, error, info};
 
-const CHANNEL_SIZE: usize = 10_000;
+const FLUSH_INTERVAL_SECONDS: u64 = 10;
+const CHUNK_CAPACITY: usize = 10_000;
+const RETRY_COUNT: usize = 5;
+const RETRY_INTERVAL_SECONDS: u64 = 2;
 
 lazy_static! {
     static ref BATCH_MSG_COUNT_GAGUE: IntGauge = register_int_gauge!(
@@ -21,38 +27,34 @@ lazy_static! {
 }
 
 pub async fn create_writer(
-    db: &Client,
+    db: Client,
     mut shutdown_rx: ShutdownRx,
 ) -> anyhow::Result<(Sender<Message<'static>>, JoinHandle<()>)> {
-    let mut inserter = db
-        .inserter("message")?
-        .with_timeouts(Some(Duration::from_secs(10)), Some(Duration::from_secs(60)))
-        .with_max_entries(750_000)
-        .with_period(Some(Duration::from_secs(10)));
+    let (tx, rx) = channel(CHUNK_CAPACITY);
 
-    let (tx, mut rx) = channel(CHANNEL_SIZE);
+    let chunks_stream = futures::StreamExt::enumerate(
+        ReceiverStream::new(rx)
+            .chunks_timeout(CHUNK_CAPACITY, Duration::from_secs(FLUSH_INTERVAL_SECONDS)),
+    );
+    let mut chunks_stream = Box::pin(chunks_stream);
 
     let handle = tokio::spawn(async move {
         loop {
             tokio::select! {
-                Some(message) = rx.recv() => {
-                    if let Err(err) = write_message(&mut inserter, message).await {
+                Some((i, messages)) = chunks_stream.next() => {
+                    if let Err(err) = write_chunk_with_retry(&db, messages, i).await {
                         error!("Could not write messages: {err}");
                     }
                 }
                 Ok(()) = shutdown_rx.changed() => {
                     info!("Flushing database write buffer");
 
-                    match inserter.end().await {
-                        Ok(stats) => {
-                            if stats.entries > 0 {
-                                info!("Flushed {} messages", stats.entries);
-                            }
-                        },
-                        Err(err) => {
+                    while let Some((i, chunk)) = chunks_stream.next().await {
+                        if let Err(err) = write_chunk_with_retry(&db, chunk, i).await {
                             error!("Could not flush messages: {err}");
-                        },
+                        }
                     }
+
                     break;
                 }
             }
@@ -62,16 +64,39 @@ pub async fn create_writer(
     Ok((tx, handle))
 }
 
-async fn write_message(
-    inserter: &mut Inserter<Message<'static>>,
-    message: Message<'static>,
+async fn write_chunk_with_retry(
+    db: &Client,
+    messages: Vec<Message<'static>>,
+    i: usize,
 ) -> anyhow::Result<()> {
-    inserter.write(&message).await?;
-    // This doesn't actually write anything to the db unless the thresholds were reached
-    let stats = inserter.commit().await?;
-    if stats.entries > 0 {
-        debug!("{} messages have been inserted", stats.entries);
-        BATCH_MSG_COUNT_GAGUE.set(stats.entries.try_into().unwrap());
+    for attempt in 1..=RETRY_COUNT {
+        match write_chunk(db, &messages, i).await {
+            Ok(()) => {
+                if attempt > 1 {
+                    debug!("Insert succeeded on attempt {attempt}");
+                }
+                return Ok(());
+            }
+            Err(err) => {
+                error!("Could not insert chunk: {err} (attempt {attempt}/{RETRY_COUNT}, retrying in {RETRY_INTERVAL_SECONDS} seconds)");
+                sleep(Duration::from_secs(RETRY_INTERVAL_SECONDS)).await;
+            }
+        }
     }
+    Err(anyhow!(
+        "Inserting failed even after {RETRY_COUNT} attempts"
+    ))
+}
+
+async fn write_chunk(db: &Client, messages: &[Message<'static>], i: usize) -> anyhow::Result<()> {
+    let mut insert = db.insert("message")?;
+    for message in messages {
+        insert.write(message).await.context("Could not write row")?;
+    }
+    insert.end().await.context("Could not end insert")?;
+
+    debug!("{} messages have been inserted (chunk {i})", messages.len());
+    BATCH_MSG_COUNT_GAGUE.set(messages.len().try_into().unwrap());
+
     Ok(())
 }

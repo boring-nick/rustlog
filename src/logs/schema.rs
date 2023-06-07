@@ -93,14 +93,14 @@ impl<'a> Message<'a> {
             .context("Invalid timestamp")?;
 
         let response_tags = tags
-            .into_iter()
+            .iter()
             .map(|(key, value)| (key.as_str(), Cow::Borrowed(*value)))
             .collect();
 
         match irc_message.command() {
             Command::Privmsg => {
                 let raw_text = irc_message.params().context("Privmsg has no params")?;
-                let text = extract_message_text(&raw_text);
+                let text = extract_message_text(raw_text);
 
                 let display_name = *tags
                     .get(&Tag::DisplayName)
@@ -110,7 +110,7 @@ impl<'a> Message<'a> {
                     .context("Message has no prefix")?
                     .nick
                     .context("Missing nickname")?;
-                let id = tags.get(&Tag::Id).map(|item| *item).unwrap_or_default();
+                let id = tags.get(&Tag::Id).copied().unwrap_or_default();
 
                 Ok(Self {
                     text: Cow::Borrowed(text),
@@ -165,7 +165,7 @@ impl<'a> Message<'a> {
                 let system_message = twitch::unescape(system_message);
 
                 let text = if let Some(user_message) = irc_message.params() {
-                    let user_message = extract_message_text(&user_message);
+                    let user_message = extract_message_text(user_message);
                     Cow::Owned(format!("{system_message} {user_message}"))
                 } else {
                     Cow::Owned(system_message)

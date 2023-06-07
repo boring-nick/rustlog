@@ -84,7 +84,7 @@ async fn run(config: Config, db: clickhouse::Client) -> anyhow::Result<()> {
     let helix_client: HelixClient<reqwest::Client> = HelixClient::default();
     let token = generate_token(&config).await?;
 
-    let (writer_tx, mut writer_handle) = create_writer(&db, shutdown_rx.clone()).await?;
+    let (writer_tx, mut writer_handle) = create_writer(db.clone(), shutdown_rx.clone()).await?;
 
     let app = App {
         helix_client,
