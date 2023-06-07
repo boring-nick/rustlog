@@ -1,8 +1,8 @@
 use anyhow::Context;
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
+use std::fs;
 use std::{collections::HashSet, sync::RwLock};
-use tokio::fs;
 use tracing::info;
 
 const CONFIG_FILE_NAME: &str = "config.json";
@@ -27,17 +27,16 @@ pub struct Config {
 }
 
 impl Config {
-    pub async fn load() -> anyhow::Result<Self> {
+    pub fn load() -> anyhow::Result<Self> {
         let contents = fs::read_to_string(CONFIG_FILE_NAME)
-            .await
             .with_context(|| format!("Failed to load config from {CONFIG_FILE_NAME}"))?;
         serde_json::from_str(&contents).context("Config deserializtion error")
     }
 
-    pub async fn save(&self) -> anyhow::Result<()> {
+    pub fn save(&self) -> anyhow::Result<()> {
         info!("Updating config");
         let json = serde_json::to_string_pretty(self)?;
-        fs::write(CONFIG_FILE_NAME, &json).await?;
+        fs::write(CONFIG_FILE_NAME, &json)?;
 
         Ok(())
     }

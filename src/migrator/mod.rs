@@ -45,7 +45,7 @@ impl Migrator {
     }
 
     pub async fn run(self, parallel_count: usize) -> anyhow::Result<()> {
-        let source_logs = LogsReader::new(&self.source_logs_path).await?;
+        let source_logs = LogsReader::new(&self.source_logs_path)?;
 
         let started_at = Instant::now();
         let channels = source_logs.get_stored_channels().await?;
@@ -63,14 +63,15 @@ impl Migrator {
         let mut i = 1;
 
         for channel_id in &filtered_channels {
+            let started_at = Instant::now();
             info!(
                 "Reading channel {channel_id} ({i}/{})",
                 filtered_channels.len()
             );
 
-            let available_logs = source_logs
-                .get_available_channel_logs(channel_id, true)
-                .await?;
+            let available_logs = source_logs.get_available_channel_logs(channel_id, true)?;
+
+            debug!("Reading available logs took {:?}", started_at.elapsed());
 
             for (year, months) in available_logs {
                 for (month, days) in months {
@@ -224,7 +225,6 @@ async fn write_lines_buffer<'a>(
         inserter.write(&message).await?;
     }
 
-    debug!("Commiting...");
     let stats = inserter.commit().await?;
     if stats.entries > 0 {
         info!(

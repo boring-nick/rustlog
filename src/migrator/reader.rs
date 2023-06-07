@@ -1,6 +1,10 @@
 use crate::{error::Error, Result};
-use std::{collections::BTreeMap, path::PathBuf, sync::Arc};
-use tokio::fs::{self, read_dir};
+use std::{
+    collections::BTreeMap,
+    fs::{self, read_dir},
+    path::PathBuf,
+    sync::Arc,
+};
 use tracing::debug;
 
 pub const COMPRESSED_CHANNEL_FILE: &str = "channel.txt.gz";
@@ -14,11 +18,11 @@ pub struct LogsReader {
 }
 
 impl LogsReader {
-    pub async fn new(logs_path: &str) -> Result<Self> {
+    pub fn new(logs_path: &str) -> Result<Self> {
         let root_folder = PathBuf::from(logs_path);
 
         if !root_folder.exists() {
-            fs::create_dir_all(&root_folder).await?;
+            fs::create_dir_all(&root_folder)?;
         }
 
         Ok(Self {
@@ -27,11 +31,12 @@ impl LogsReader {
     }
 
     pub async fn get_stored_channels(&self) -> Result<Vec<String>> {
-        let mut entries = read_dir(&*self.root_path).await?;
+        let mut entries = read_dir(&*self.root_path)?;
 
         let mut channels = Vec::new();
-        while let Some(entry) = entries.next_entry().await? {
-            if entry.metadata().await?.is_dir() {
+        while let Some(entry) = entries.next() {
+            let entry = entry?;
+            if entry.metadata()?.is_dir() {
                 let channel = entry
                     .file_name()
                     .into_string()
@@ -43,7 +48,7 @@ impl LogsReader {
         Ok(channels)
     }
 
-    pub async fn get_available_channel_logs(
+    pub fn get_available_channel_logs(
         &self,
         channel_id: &str,
         include_compressed: bool,
@@ -54,22 +59,28 @@ impl LogsReader {
             return Err(Error::NotFound);
         }
 
-        let mut channel_dir = read_dir(channel_path).await?;
+        let mut channel_dir = read_dir(channel_path)?;
 
         let mut years = BTreeMap::new();
 
-        while let Some(year_entry) = channel_dir.next_entry().await? {
-            if year_entry.metadata().await?.is_dir() {
-                let mut year_dir = read_dir(year_entry.path()).await?;
+        while let Some(year_entry) = channel_dir.next() {
+            let year_entry = year_entry?;
+
+            if year_entry.metadata()?.is_dir() {
+                let mut year_dir = read_dir(year_entry.path())?;
                 let mut months = BTreeMap::new();
 
-                while let Some(month_entry) = year_dir.next_entry().await? {
-                    if month_entry.metadata().await?.is_dir() {
-                        let mut month_dir = read_dir(month_entry.path()).await?;
+                while let Some(month_entry) = year_dir.next() {
+                    let month_entry = month_entry?;
+
+                    if month_entry.metadata()?.is_dir() {
+                        let mut month_dir = read_dir(month_entry.path())?;
                         let mut days = Vec::new();
 
-                        while let Some(day_entry) = month_dir.next_entry().await? {
-                            if day_entry.metadata().await?.is_dir()
+                        while let Some(day_entry) = month_dir.next() {
+                            let day_entry = day_entry?;
+
+                            if day_entry.metadata()?.is_dir()
                                 && day_entry.file_name().to_str() != Some("users")
                             {
                                 let day = day_entry
@@ -82,7 +93,6 @@ impl LogsReader {
                                     day_entry.path().join(UNCOMPRESSED_CHANNEL_FILE);
 
                                 if fs::metadata(&uncompressed_channel_file_path)
-                                    .await
                                     .map_or(false, |metadata| metadata.is_file())
                                 {
                                     days.push(day);
@@ -91,7 +101,6 @@ impl LogsReader {
                                         day_entry.path().join(COMPRESSED_CHANNEL_FILE);
 
                                     if fs::metadata(&compressed_channel_file_path)
-                                        .await
                                         .map_or(false, |metadata| metadata.is_file())
                                     {
                                         days.push(day);

@@ -172,7 +172,7 @@ impl<'a> Bot<'a> {
         let code = args.first().context("No optout code provided")?;
         if self.app.optout_codes.remove(*code).is_some() {
             self.app.config.opt_out.insert(sender_id.to_owned(), true);
-            self.app.config.save().await?;
+            self.app.config.save()?;
             info!("User {sender_id} opted out");
             Ok(())
         } else {
@@ -214,7 +214,7 @@ impl<'a> Bot<'a> {
             }
         }
 
-        self.app.config.save().await?;
+        self.app.config.save()?;
 
         Ok(())
     }

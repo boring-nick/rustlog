@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let config = Config::load().await?;
+    let config = Config::load()?;
     let mut db = clickhouse::Client::default()
         .with_url(&config.clickhouse_url)
         .with_database(&config.clickhouse_db);

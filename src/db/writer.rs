@@ -1,5 +1,5 @@
 use super::schema::Message;
-use crate::ShutdownRx;
+use crate::{db::schema::MESSAGES_TABLE, ShutdownRx};
 use anyhow::{anyhow, Context};
 use clickhouse::Client;
 use lazy_static::lazy_static;
@@ -89,7 +89,7 @@ async fn write_chunk_with_retry(
 }
 
 async fn write_chunk(db: &Client, messages: &[Message<'_>], i: usize) -> anyhow::Result<()> {
-    let mut insert = db.insert("message")?;
+    let mut insert = db.insert(MESSAGES_TABLE)?;
     for message in messages {
         insert.write(message).await.context("Could not write row")?;
     }
