@@ -16,7 +16,7 @@ use tracing::{debug, error, info};
 const FLUSH_INTERVAL_SECONDS: u64 = 10;
 const CHUNK_CAPACITY: usize = 10_000;
 const RETRY_COUNT: usize = 5;
-const RETRY_INTERVAL_SECONDS: u64 = 2;
+const RETRY_INTERVAL_SECONDS: u64 = 5;
 
 lazy_static! {
     static ref BATCH_MSG_COUNT_GAGUE: IntGauge = register_int_gauge!(
