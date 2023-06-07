@@ -48,22 +48,29 @@ impl Migrator {
     pub async fn run(self, parallel_count: usize) -> anyhow::Result<()> {
         let source_logs = LogsReader::new(&self.source_logs_path).await?;
 
-        info!("Migrating channels {:?}", self.channel_ids);
-
         let started_at = Instant::now();
         let channels = source_logs.get_stored_channels().await?;
 
         let semaphore = Arc::new(Semaphore::new(parallel_count));
         let mut handles = Vec::with_capacity(parallel_count);
 
-        for channel_id in channels {
-            if !self.channel_ids.is_empty() && !self.channel_ids.contains(&channel_id) {
-                info!("Skipping channel {channel_id}");
-                continue;
-            }
+        let filtered_channels: Vec<_> = channels
+            .into_iter()
+            .filter(|channel| self.channel_ids.is_empty() || self.channel_ids.contains(channel))
+            .collect();
+
+        info!("Migrating channels {filtered_channels:?}");
+
+        let mut i = 1;
+
+        for channel_id in &filtered_channels {
+            info!(
+                "Reading channel {channel_id} ({i}/{})",
+                filtered_channels.len()
+            );
 
             let available_logs = source_logs
-                .get_available_channel_logs(&channel_id, true)
+                .get_available_channel_logs(channel_id, true)
                 .await?;
 
             for (year, months) in available_logs {
@@ -105,6 +112,7 @@ impl Migrator {
                     handles.push(handle);
                 }
             }
+            i += 1;
         }
 
         for handle in handles {
