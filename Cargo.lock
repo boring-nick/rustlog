@@ -1931,7 +1931,7 @@ checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
 [[package]]
 name = "twitch"
 version = "0.1.0"
-source = "git+https://github.com/jprochazk/twitch-rs#64012bf6c83ef73d9f0fac416988783733f05dbe"
+source = "git+https://github.com/jprochazk/twitch-rs#33ed8584be5f824ffa4db3d2f794a6e643714994"
 
 [[package]]
 name = "twitch-irc"

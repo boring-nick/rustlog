@@ -3,13 +3,13 @@ mod reader;
 use self::reader::{LogsReader, COMPRESSED_CHANNEL_FILE, UNCOMPRESSED_CHANNEL_FILE};
 use crate::{
     db::schema::{Message, MESSAGES_TABLE},
-    logs::{extract_channel_and_user_from_raw, extract_timestamp},
+    logs::extract::{extract_channel_and_user_from_raw, extract_raw_timestamp},
 };
 use anyhow::anyhow;
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 use clickhouse::inserter::Inserter;
 use flate2::bufread::GzDecoder;
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use std::{
     borrow::Cow,
     convert::TryInto,
@@ -21,9 +21,8 @@ use std::{
 };
 use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};
-use twitch_irc::message::IRCMessage;
 
-const LINES_BATCH_SIZE: usize = 32768;
+const LINES_BATCH_SIZE: usize = 100_000;
 
 #[derive(Clone)]
 pub struct Migrator {
@@ -142,13 +141,20 @@ impl Migrator {
             let file_reader = BufReader::new(File::open(&compressed_file_path)?);
             let gz = BufReader::new(GzDecoder::new(file_reader));
 
-            self.migrate_reader(gz, date, channel_id, inserter).await
+            self.migrate_reader(gz, date, channel_id, inserter, &compressed_file_path)
+                .await
         } else if uncompressed_file_path.exists() {
             debug!("Reading uncompressed log {uncompressed_file_path:?}");
             let file_reader = BufReader::new(File::open(&uncompressed_file_path)?);
 
-            self.migrate_reader(file_reader, date, channel_id, inserter)
-                .await
+            self.migrate_reader(
+                file_reader,
+                date,
+                channel_id,
+                inserter,
+                &uncompressed_file_path,
+            )
+            .await
         } else {
             Err(anyhow!("File does not exist"))
         }
@@ -160,6 +166,7 @@ impl Migrator {
         datetime: DateTime<Utc>,
         channel_id: &'a str,
         inserter: &mut Inserter<Message<'a>>,
+        file_path: &Path,
     ) -> anyhow::Result<()> {
         let mut buffer = Vec::with_capacity(LINES_BATCH_SIZE);
 
@@ -168,12 +175,12 @@ impl Migrator {
             buffer.push(line);
 
             if buffer.len() >= LINES_BATCH_SIZE {
-                write_lines_buffer(channel_id, buffer, inserter, datetime).await?;
+                write_lines_buffer(channel_id, buffer, inserter, datetime, file_path).await?;
                 buffer = Vec::with_capacity(LINES_BATCH_SIZE);
             }
         }
 
-        write_lines_buffer(channel_id, buffer, inserter, datetime).await?;
+        write_lines_buffer(channel_id, buffer, inserter, datetime, file_path).await?;
 
         Ok(())
     }
@@ -184,12 +191,14 @@ async fn write_lines_buffer<'a>(
     buffer: Vec<String>,
     inserter: &mut Inserter<Message<'a>>,
     datetime: DateTime<Utc>,
+    file_path: &Path,
 ) -> anyhow::Result<()> {
-    let messages: Vec<Message> = buffer
+    let messages: Vec<_> = buffer
         .into_par_iter()
-        .filter_map(|raw| match IRCMessage::parse(&raw) {
-            Ok(irc_message) => {
-                let timestamp = extract_timestamp(&irc_message)
+        .enumerate()
+        .filter_map(|(i, raw)| match twitch::Message::parse(raw) {
+            Some(irc_message) => {
+                let timestamp = extract_raw_timestamp(&irc_message)
                     .unwrap_or_else(|| datetime.timestamp_millis() as u64);
 
                 let user_id = extract_channel_and_user_from_raw(&irc_message)
@@ -197,16 +206,15 @@ async fn write_lines_buffer<'a>(
                     .map(str::to_owned)
                     .unwrap_or_default();
 
-                let message = Message {
+                Some(Message {
                     channel_id: Cow::Borrowed(channel_id),
                     user_id: Cow::Owned(user_id),
                     timestamp,
-                    raw: Cow::Owned(raw),
-                };
-                Some(message)
+                    raw: Cow::Owned(irc_message.into_raw()),
+                })
             }
-            Err(err) => {
-                warn!("Could not parse message {raw}: {err}");
+            None => {
+                warn!("Could not parse message (line {i} of file {file_path:?})");
                 None
             }
         })
@@ -216,6 +224,7 @@ async fn write_lines_buffer<'a>(
         inserter.write(&message).await?;
     }
 
+    debug!("Commiting...");
     let stats = inserter.commit().await?;
     if stats.entries > 0 {
         info!(

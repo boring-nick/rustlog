@@ -14,7 +14,7 @@ use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tracing::{debug, error, info};
 
 const FLUSH_INTERVAL_SECONDS: u64 = 10;
-const CHUNK_CAPACITY: usize = 10_000;
+const CHUNK_CAPACITY: usize = 750_000;
 const RETRY_COUNT: usize = 5;
 const RETRY_INTERVAL_SECONDS: u64 = 5;
 
@@ -66,7 +66,7 @@ pub async fn create_writer(
 
 async fn write_chunk_with_retry(
     db: &Client,
-    messages: Vec<Message<'static>>,
+    messages: Vec<Message<'_>>,
     i: usize,
 ) -> anyhow::Result<()> {
     for attempt in 1..=RETRY_COUNT {
@@ -88,7 +88,7 @@ async fn write_chunk_with_retry(
     ))
 }
 
-async fn write_chunk(db: &Client, messages: &[Message<'static>], i: usize) -> anyhow::Result<()> {
+async fn write_chunk(db: &Client, messages: &[Message<'_>], i: usize) -> anyhow::Result<()> {
     let mut insert = db.insert("message")?;
     for message in messages {
         insert.write(message).await.context("Could not write row")?;

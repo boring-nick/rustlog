@@ -1,15 +1,14 @@
-use std::borrow::Cow;
-
 use crate::{
     app::App,
     db::schema::Message,
-    logs::{extract_channel_and_user_from_raw, extract_timestamp},
+    logs::extract::{extract_channel_and_user_from_raw, extract_raw_timestamp},
     ShutdownRx,
 };
 use anyhow::{anyhow, Context};
 use chrono::Utc;
 use lazy_static::lazy_static;
 use prometheus::{register_int_counter_vec, IntCounterVec};
+use std::borrow::Cow;
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, error, info, trace};
 use twitch_irc::{
@@ -123,7 +122,7 @@ impl<'a> Bot<'a> {
                     .inc();
             }
 
-            let timestamp = extract_timestamp(&irc_message)
+            let timestamp = extract_raw_timestamp(&irc_message)
                 .unwrap_or_else(|| Utc::now().timestamp_millis().try_into().unwrap());
             let user_id = maybe_user_id.unwrap_or_default().to_owned();
 
