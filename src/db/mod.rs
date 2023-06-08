@@ -18,9 +18,13 @@ pub async fn read_channel(
     db: &Client,
     channel_id: &str,
     log_date: ChannelLogDate,
+    reverse: bool,
 ) -> Result<LogsStream> {
+    let suffix = if reverse { "DESC" } else { "ASC" };
+    let query = format!("SELECT raw FROM message WHERE channel_id = ? AND toStartOfDay(timestamp) = ? ORDER BY timestamp {suffix}");
+
     let cursor = db
-        .query("SELECT raw FROM message WHERE channel_id = ? AND toStartOfDay(timestamp) = ? ORDER BY timestamp ASC")
+        .query(&query)
         .bind(channel_id)
         .bind(log_date.to_string())
         .fetch()?;
@@ -32,9 +36,13 @@ pub async fn read_user(
     channel_id: &str,
     user_id: &str,
     log_date: UserLogDate,
+    reverse: bool,
 ) -> Result<LogsStream> {
+    let suffix = if reverse { "DESC" } else { "ASC" };
+    let query = format!("SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND toStartOfMonth(timestamp) = ? ORDER BY timestamp {suffix}");
+
     let cursor = db
-        .query("SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND toStartOfMonth(timestamp) = ? ORDER BY timestamp ASC")
+        .query(&query)
         .bind(channel_id)
         .bind(user_id)
         .bind(format!("{}-{:0>2}-1", log_date.year, log_date.month))

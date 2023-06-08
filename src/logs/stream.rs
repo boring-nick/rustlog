@@ -37,10 +37,7 @@ impl Stream for LogsStream {
                 pin!(fut);
                 match fut.poll(cx) {
                     Poll::Ready(result) => match result {
-                        Ok(value) => Poll::Ready(value.map(|mut line| {
-                            line.push('\n');
-                            Ok(line)
-                        })),
+                        Ok(value) => Poll::Ready(value.map(|line| Ok(line))),
                         Err(err) => Poll::Ready(Some(Err(err.into()))),
                     },
                     Poll::Pending => Poll::Pending,

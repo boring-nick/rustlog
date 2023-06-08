@@ -1,143 +1,53 @@
 mod join_iter;
+mod json_stream;
+mod text_stream;
 
-use crate::logs::schema::Message;
-use crate::logs::stream::LogsStream;
-use crate::Result;
+use self::{json_stream::JsonLogsStream, text_stream::TextLogsStream};
+use crate::logs::{schema::Message, stream::LogsStream};
 use aide::OperationOutput;
 use axum::{
     body::StreamBody,
-    http::HeaderValue,
     response::{IntoResponse, Response},
     Json,
 };
 use futures::TryStreamExt;
 use indexmap::IndexMap;
-use join_iter::JoinIter;
-use mime_guess::mime;
-use rayon::prelude::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
-use reqwest::header;
 use schemars::JsonSchema;
-use serde::Serialize;
-use std::time::Instant;
-use tracing::{debug, warn};
-
-/// Rough estimation of how big a single message is in JSON format
-const JSON_MESSAGE_SIZE: usize = 1024 * 1024;
 
 pub struct LogsResponse {
+    pub stream: LogsStream,
     pub response_type: LogsResponseType,
-    pub reverse: bool,
 }
 
 pub enum LogsResponseType {
-    Raw(LogsStream),
-    Processed(ProcessedLogs),
-}
-
-pub struct ProcessedLogs {
-    pub messages: Vec<twitch::Message>,
-    pub logs_type: ProcessedLogsType,
-}
-
-#[derive(Serialize, JsonSchema)]
-pub struct JsonLogsResponse<'a> {
-    pub messages: Vec<Message<'a>>,
-}
-
-impl ProcessedLogs {
-    pub async fn parse_raw(stream: LogsStream, logs_type: ProcessedLogsType) -> Result<Self> {
-        let lines: Vec<_> = stream.try_collect().await?;
-
-        let messages = lines
-            .into_par_iter()
-            .filter_map(|raw| match twitch::Message::parse(raw) {
-                Some(msg) => Some(msg),
-                None => {
-                    warn!("Could not parse message");
-                    None
-                }
-            })
-            .collect();
-
-        Ok(Self {
-            messages,
-            logs_type,
-        })
-    }
-}
-
-pub enum ProcessedLogsType {
+    Raw,
     Text,
     Json,
+}
+
+/// Used for schema only, actual serialization is manual
+#[derive(JsonSchema)]
+pub struct JsonLogsResponse<'a> {
+    pub messages: Vec<Message<'a>>,
 }
 
 impl IntoResponse for LogsResponse {
     fn into_response(self) -> Response {
         match self.response_type {
-            LogsResponseType::Raw(stream) => {
-                // TODO!!!!
-                // if self.reverse {
-                //     lines.reverse();
-                // }
+            LogsResponseType::Raw => {
+                let stream = self.stream.map_ok(|mut line| {
+                    line.push('\n');
+                    line
+                });
                 StreamBody::new(stream).into_response()
             }
-            LogsResponseType::Processed(processed_logs) => {
-                let mut irc_messages = processed_logs.messages;
-                if self.reverse {
-                    irc_messages.reverse();
-                }
-
-                let messages = irc_messages
-                    .par_iter()
-                    .filter_map(|irc_message| match Message::from_irc_message(irc_message) {
-                        Ok(message) => Some(message),
-                        Err(err) => {
-                            warn!("Could not parse message: {err}, irc: {:?}", irc_message);
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>();
-
-                match processed_logs.logs_type {
-                    ProcessedLogsType::Text => {
-                        let started_at = Instant::now();
-
-                        let text = messages.iter().join('\n').to_string();
-
-                        debug!(
-                            "Collecting messages into a response took {}ms",
-                            started_at.elapsed().as_millis()
-                        );
-
-                        text.into_response()
-                    }
-                    ProcessedLogsType::Json => {
-                        let started_at = Instant::now();
-
-                        let json_response = JsonLogsResponse { messages };
-
-                        let mut buf =
-                            Vec::with_capacity(JSON_MESSAGE_SIZE * json_response.messages.len());
-                        serde_json::to_writer(&mut buf, &json_response)
-                            .expect("Serialization error");
-
-                        let response = (
-                            [(
-                                header::CONTENT_TYPE,
-                                HeaderValue::from_static(mime::APPLICATION_JSON.as_ref()),
-                            )],
-                            buf,
-                        )
-                            .into_response();
-
-                        debug!(
-                            "Building JSON response took {}ms",
-                            started_at.elapsed().as_millis()
-                        );
-
-                        response
-                    }
-                }
+            LogsResponseType::Text => {
+                let text_stream = TextLogsStream::new(self.stream);
+                StreamBody::new(text_stream).into_response()
+            }
+            LogsResponseType::Json => {
+                let json_stream = JsonLogsStream::new(self.stream);
+                StreamBody::new(json_stream).into_response()
             }
         }
     }
