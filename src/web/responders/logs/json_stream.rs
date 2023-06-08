@@ -3,7 +3,7 @@ use crate::{
     Result,
 };
 use futures::{stream::TryChunks, Future, Stream, StreamExt, TryStreamExt};
-use rayon::prelude::ParallelIterator;
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::{
     collections::VecDeque,
     pin::Pin,
@@ -62,7 +62,7 @@ impl Stream for JsonLogsStream {
                         }
                     }
 
-                    /*let serialized_messages: Vec<_> = messages
+                    let serialized_messages: Vec<_> = messages
                         .into_par_iter()
                         .map(|message| {
                             let mut message_buf = Vec::with_capacity(JSON_MESSAGE_SIZE);
@@ -74,10 +74,6 @@ impl Stream for JsonLogsStream {
                     for message_buf in serialized_messages {
                         buf.push(b',');
                         buf.extend(message_buf);
-                    }*/
-                    for message in messages {
-                        buf.push(b',');
-                        serde_json::to_writer(&mut buf, &message).unwrap();
                     }
 
                     Poll::Ready(Some(Ok(buf)))

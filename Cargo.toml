@@ -50,7 +50,7 @@ twitch_api2 = { version = "0.6.1", features = [
     "helix",
     "twitch_oauth2",
 ] }
-twitch = { git = "https://github.com/jprochazk/twitch-rs" }
+twitch = { git = "https://github.com/jprochazk/twitch-rs", features = ["simd"] }
 
 [dev-dependencies]
 pretty_assertions = "1.3.0"
