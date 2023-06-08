@@ -1,12 +1,16 @@
 mod join_iter;
 
 use crate::logs::schema::Message;
+use crate::logs::stream::LogsStream;
+use crate::Result;
 use aide::OperationOutput;
 use axum::{
+    body::StreamBody,
     http::HeaderValue,
     response::{IntoResponse, Response},
     Json,
 };
+use futures::TryStreamExt;
 use indexmap::IndexMap;
 use join_iter::JoinIter;
 use mime_guess::mime;
@@ -26,7 +30,7 @@ pub struct LogsResponse {
 }
 
 pub enum LogsResponseType {
-    Raw(Vec<String>),
+    Raw(LogsStream),
     Processed(ProcessedLogs),
 }
 
@@ -41,7 +45,9 @@ pub struct JsonLogsResponse<'a> {
 }
 
 impl ProcessedLogs {
-    pub fn parse_raw(lines: Vec<String>, logs_type: ProcessedLogsType) -> Self {
+    pub async fn parse_raw(stream: LogsStream, logs_type: ProcessedLogsType) -> Result<Self> {
+        let lines: Vec<_> = stream.try_collect().await?;
+
         let messages = lines
             .into_par_iter()
             .filter_map(|raw| match twitch::Message::parse(raw) {
@@ -53,10 +59,10 @@ impl ProcessedLogs {
             })
             .collect();
 
-        Self {
+        Ok(Self {
             messages,
             logs_type,
-        }
+        })
     }
 }
 
@@ -68,12 +74,12 @@ pub enum ProcessedLogsType {
 impl IntoResponse for LogsResponse {
     fn into_response(self) -> Response {
         match self.response_type {
-            LogsResponseType::Raw(mut lines) => {
-                if self.reverse {
-                    lines.reverse();
-                }
-
-                lines.into_iter().join('\n').to_string().into_response()
+            LogsResponseType::Raw(stream) => {
+                // TODO!!!!
+                // if self.reverse {
+                //     lines.reverse();
+                // }
+                StreamBody::new(stream).into_response()
             }
             LogsResponseType::Processed(processed_logs) => {
                 let mut irc_messages = processed_logs.messages;
