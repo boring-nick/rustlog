@@ -36,7 +36,7 @@ impl Config {
     pub fn save(&self) -> anyhow::Result<()> {
         info!("Updating config");
         let json = serde_json::to_string_pretty(self)?;
-        fs::write(CONFIG_FILE_NAME, &json)?;
+        fs::write(CONFIG_FILE_NAME, json)?;
 
         Ok(())
     }

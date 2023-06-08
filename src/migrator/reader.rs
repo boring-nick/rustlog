@@ -31,10 +31,10 @@ impl LogsReader {
     }
 
     pub async fn get_stored_channels(&self) -> Result<Vec<String>> {
-        let mut entries = read_dir(&*self.root_path)?;
+        let entries = read_dir(&*self.root_path)?;
 
         let mut channels = Vec::new();
-        while let Some(entry) = entries.next() {
+        for entry in entries {
             let entry = entry?;
             if entry.metadata()?.is_dir() {
                 let channel = entry
@@ -59,25 +59,25 @@ impl LogsReader {
             return Err(Error::NotFound);
         }
 
-        let mut channel_dir = read_dir(channel_path)?;
+        let channel_dir = read_dir(channel_path)?;
 
         let mut years = BTreeMap::new();
 
-        while let Some(year_entry) = channel_dir.next() {
+        for year_entry in channel_dir {
             let year_entry = year_entry?;
 
             if year_entry.metadata()?.is_dir() {
-                let mut year_dir = read_dir(year_entry.path())?;
+                let year_dir = read_dir(year_entry.path())?;
                 let mut months = BTreeMap::new();
 
-                while let Some(month_entry) = year_dir.next() {
+                for month_entry in year_dir {
                     let month_entry = month_entry?;
 
                     if month_entry.metadata()?.is_dir() {
-                        let mut month_dir = read_dir(month_entry.path())?;
+                        let month_dir = read_dir(month_entry.path())?;
                         let mut days = Vec::new();
 
-                        while let Some(day_entry) = month_dir.next() {
+                        for day_entry in month_dir {
                             let day_entry = day_entry?;
 
                             if day_entry.metadata()?.is_dir()
