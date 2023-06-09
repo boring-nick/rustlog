@@ -22,15 +22,14 @@ impl MessageWithTags for twitch::Message {
 
 pub fn extract_user_id<T: MessageWithTags>(msg: &T) -> Option<&str> {
     msg.get_tag(&Tag::UserId)
+        .or_else(|| msg.get_tag(&Tag::TargetUserId))
 }
 
 pub fn extract_channel_and_user_from_raw<T: MessageWithTags>(
     msg: &T,
 ) -> Option<(&str, Option<&str>)> {
     msg.get_tag(&Tag::RoomId).map(|channel_id| {
-        let user_id = msg
-            .get_tag(&Tag::UserId)
-            .or_else(|| msg.get_tag(&Tag::TargetUserId));
+        let user_id = extract_user_id(msg);
         (channel_id, user_id)
     })
 }
