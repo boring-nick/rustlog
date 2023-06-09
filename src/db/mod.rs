@@ -28,7 +28,7 @@ pub async fn read_channel(
         .bind(channel_id)
         .bind(log_date.to_string())
         .fetch()?;
-    Ok(LogsStream::new_cursor(cursor))
+    LogsStream::new_cursor(cursor).await
 }
 
 pub async fn read_user(
@@ -48,7 +48,7 @@ pub async fn read_user(
         .bind(format!("{}-{:0>2}-1", log_date.year, log_date.month))
         .fetch()?;
 
-    Ok(LogsStream::new_cursor(cursor))
+    LogsStream::new_cursor(cursor).await
 }
 
 pub async fn read_available_channel_logs(
@@ -115,6 +115,10 @@ pub async fn read_random_user_line(db: &Client, channel_id: &str, user_id: &str)
         .fetch_one::<u64>()
         .await?;
 
+    if total_count == 0 {
+        return Err(Error::NotFound);
+    }
+
     let offset = {
         let mut rng = thread_rng();
         (0..total_count).choose(&mut rng).ok_or(Error::NotFound)
@@ -132,8 +136,9 @@ pub async fn read_random_user_line(db: &Client, channel_id: &str, user_id: &str)
         .bind(offset)
         .bind(channel_id)
         .bind(user_id)
-        .fetch_one::<String>()
-        .await?;
+        .fetch_optional::<String>()
+        .await?
+        .ok_or(Error::NotFound)?;
 
     Ok(text)
 }
@@ -144,6 +149,10 @@ pub async fn read_random_channel_line(db: &Client, channel_id: &str) -> Result<S
         .bind(channel_id)
         .fetch_one::<u64>()
         .await?;
+
+    if total_count == 0 {
+        return Err(Error::NotFound);
+    }
 
     let offset = {
         let mut rng = thread_rng();
@@ -160,8 +169,9 @@ pub async fn read_random_channel_line(db: &Client, channel_id: &str) -> Result<S
         .bind(channel_id)
         .bind(offset)
         .bind(channel_id)
-        .fetch_one::<String>()
-        .await?;
+        .fetch_optional::<String>()
+        .await?
+        .ok_or(Error::NotFound)?;
 
     Ok(text)
 }

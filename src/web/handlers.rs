@@ -230,7 +230,7 @@ pub async fn random_channel_line(
     };
 
     let random_line = read_random_channel_line(&app.db, &channel_id).await?;
-    let stream = LogsStream::new_provided(vec![random_line]);
+    let stream = LogsStream::new_provided(vec![random_line])?;
 
     Ok(LogsResponse {
         stream,
@@ -268,7 +268,7 @@ async fn random_user_line(
     };
 
     let random_line = read_random_user_line(&app.db, &channel_id, &user_id).await?;
-    let stream = LogsStream::new_provided(vec![random_line]);
+    let stream = LogsStream::new_provided(vec![random_line])?;
 
     Ok(LogsResponse {
         stream,
