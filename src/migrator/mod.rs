@@ -189,7 +189,10 @@ async fn write_line<'a>(
     inserter: &mut Inserter<Message<'_>>,
     datetime: DateTime<Utc>,
 ) -> anyhow::Result<()> {
-    match twitch::Message::parse_with_whitelist(raw, twitch::whitelist!(TmiSentTs, UserId)) {
+    match twitch::Message::parse_with_whitelist(
+        raw,
+        twitch::whitelist!(TmiSentTs, UserId, TargetUserId),
+    ) {
         Some(irc_message) => {
             let timestamp = extract_raw_timestamp(&irc_message)
                 .unwrap_or_else(|| datetime.timestamp_millis() as u64);
