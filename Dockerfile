@@ -4,8 +4,9 @@ COPY web .
 RUN yarn install --ignore-optional
 RUN yarn build
 
-FROM docker.io/clux/muslrust:stable AS chef
+FROM rust:1.70-bullseye AS chef
 USER root
+ENV CARGO_PROFILE_RELEASE_LTO=true
 RUN cargo install cargo-chef
 WORKDIR /app
 
@@ -15,13 +16,13 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --target x86_64-unknown-linux-musl --recipe-path recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 COPY --from=frontend /src/web web/
-RUN cargo build --release --target x86_64-unknown-linux-musl
+RUN cargo build --release
 
-FROM docker.io/alpine AS runtime
-RUN addgroup -S rustlog && adduser -S rustlog -G rustlog && mkdir /logs && chown rustlog: /logs
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/rustlog /usr/local/bin/
+FROM debian:bullseye AS runtime
+RUN useradd rustlog && mkdir /logs && chown rustlog: /logs
+COPY --from=builder /app/target/release/rustlog /usr/local/bin/
 USER rustlog
 CMD ["/usr/local/bin/rustlog"]

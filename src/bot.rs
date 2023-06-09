@@ -1,5 +1,15 @@
-use crate::{app::App, logs::extract_channel_and_user_from_raw};
-use anyhow::anyhow;
+use crate::{
+    app::App,
+    db::schema::Message,
+    logs::extract::{extract_channel_and_user_from_raw, extract_raw_timestamp},
+    ShutdownRx,
+};
+use anyhow::{anyhow, Context};
+use chrono::Utc;
+use lazy_static::lazy_static;
+use prometheus::{register_int_counter_vec, IntCounterVec};
+use std::borrow::Cow;
+use tokio::sync::mpsc::Sender;
 use tracing::{debug, error, info, trace};
 use twitch_irc::{
     login::LoginCredentials,
@@ -9,23 +19,38 @@ use twitch_irc::{
 
 type TwitchClient<C> = TwitchIRCClient<SecureTCPTransport, C>;
 
+lazy_static! {
+    static ref MESSAGES_RECEIVED_COUNTERS: IntCounterVec = register_int_counter_vec!(
+        "rustlog_messages_received",
+        "How many messages were written",
+        &["channel_id"]
+    )
+    .unwrap();
+}
+
 const COMMAND_PREFIX: &str = "!rustlog ";
 
-pub async fn run<C: LoginCredentials>(login_credentials: C, app: App<'_>) {
-    let bot = Bot::new(app);
-    bot.run(login_credentials).await;
+pub async fn run<C: LoginCredentials>(
+    login_credentials: C,
+    app: App<'_>,
+    writer_tx: Sender<Message<'static>>,
+    shutdown_rx: ShutdownRx,
+) {
+    let bot = Bot::new(app, writer_tx);
+    bot.run(login_credentials, shutdown_rx).await;
 }
 
 struct Bot<'a> {
     app: App<'a>,
+    writer_tx: Sender<Message<'static>>,
 }
 
 impl<'a> Bot<'a> {
-    pub fn new(app: App<'a>) -> Bot<'a> {
-        Self { app }
+    pub fn new(app: App<'a>, writer_tx: Sender<Message<'static>>) -> Bot<'a> {
+        Self { app, writer_tx }
     }
 
-    pub async fn run<C: LoginCredentials>(self, login_credentials: C) {
+    pub async fn run<C: LoginCredentials>(self, login_credentials: C, mut shutdown_rx: ShutdownRx) {
         let client_config = ClientConfig::new_simple(login_credentials);
         let (mut receiver, client) = TwitchIRCClient::<SecureTCPTransport, C>::new(client_config);
 
@@ -43,9 +68,17 @@ impl<'a> Bot<'a> {
                     client.join(channel_login).expect("Failed to join channel");
                 }
 
-                while let Some(msg) = receiver.recv().await {
-                    if let Err(e) = self.handle_message(msg, &client).await {
-                        error!("Could not handle message: {e}");
+                loop {
+                    tokio::select! {
+                        Some(msg) = receiver.recv() => {
+                            if let Err(e) = self.handle_message(msg, &client).await {
+                                error!("Could not handle message: {e}");
+                            }
+                        }
+                        _ = shutdown_rx.changed() => {
+                            debug!("Shutting down bot task");
+                            break;
+                        }
                     }
                 }
             }
@@ -64,7 +97,7 @@ impl<'a> Bot<'a> {
             trace!("Processing message {}", privmsg.message_text);
             if let Some(cmd) = privmsg.message_text.strip_prefix(COMMAND_PREFIX) {
                 if self.app.config.admins.contains(&privmsg.sender.login) {
-                    self.handle_command(cmd, client).await?;
+                    self.handle_command(cmd, client, &privmsg.sender.id).await?;
                 } else {
                     info!(
                         "User {} is not an admin to use commands",
@@ -80,13 +113,31 @@ impl<'a> Bot<'a> {
     }
 
     async fn write_message(&self, msg: ServerMessage) -> anyhow::Result<()> {
+        // Ignore
+        if matches!(msg, ServerMessage::RoomState(_)) {
+            return Ok(());
+        }
+
         let irc_message = IRCMessage::from(msg);
 
         if let Some((channel_id, maybe_user_id)) = extract_channel_and_user_from_raw(&irc_message) {
-            self.app
-                .logs
-                .write_message(irc_message.as_raw_irc(), channel_id, maybe_user_id)
-                .await?;
+            if !channel_id.is_empty() {
+                MESSAGES_RECEIVED_COUNTERS
+                    .with_label_values(&[channel_id])
+                    .inc();
+            }
+
+            let timestamp = extract_raw_timestamp(&irc_message)
+                .unwrap_or_else(|| Utc::now().timestamp_millis().try_into().unwrap());
+            let user_id = maybe_user_id.unwrap_or_default().to_owned();
+
+            let message = Message {
+                channel_id: Cow::Owned(channel_id.to_owned()),
+                user_id: Cow::Owned(user_id),
+                timestamp,
+                raw: Cow::Owned(irc_message.as_raw_irc()),
+            };
+            self.writer_tx.send(message).await?;
         }
 
         Ok(())
@@ -96,6 +147,7 @@ impl<'a> Bot<'a> {
         &self,
         cmd: &str,
         client: &TwitchClient<C>,
+        sender_id: &str,
     ) -> anyhow::Result<()> {
         debug!("Processing command {cmd}");
         let mut split = cmd.split_whitespace();
@@ -111,11 +163,26 @@ impl<'a> Bot<'a> {
                     self.update_channels(client, &args, ChannelAction::Part)
                         .await?
                 }
+                "optout" => {
+                    self.optout_user(&args, sender_id).await?;
+                }
                 _ => (),
             }
         }
 
         Ok(())
+    }
+
+    async fn optout_user(&self, args: &[&str], sender_id: &str) -> anyhow::Result<()> {
+        let code = args.first().context("No optout code provided")?;
+        if self.app.optout_codes.remove(*code).is_some() {
+            self.app.config.opt_out.insert(sender_id.to_owned(), true);
+            self.app.config.save()?;
+            info!("User {sender_id} opted out");
+            Ok(())
+        } else {
+            Err(anyhow!("Invalid optout code"))
+        }
     }
 
     async fn update_channels<C: LoginCredentials>(
@@ -152,7 +219,7 @@ impl<'a> Bot<'a> {
             }
         }
 
-        self.app.config.save().await?;
+        self.app.config.save()?;
 
         Ok(())
     }

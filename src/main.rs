@@ -2,37 +2,46 @@ mod app;
 mod args;
 mod bot;
 mod config;
+mod db;
 mod error;
 mod logs;
 mod migrator;
-mod reindexer;
 mod web;
 
 pub type Result<T> = std::result::Result<T, error::Error>;
+pub type ShutdownRx = watch::Receiver<()>;
 
+use anyhow::{anyhow, Context};
 use app::App;
 use args::{Args, Command};
 use clap::Parser;
 use config::Config;
 use dashmap::DashMap;
-use logs::{
-    index::{self, Index},
-    Logs,
-};
+use db::{setup_db, writer::create_writer};
+use futures::{future::try_join_all, stream::FuturesUnordered, StreamExt};
 use migrator::Migrator;
-use std::{path::PathBuf, sync::Arc};
-use tokio::{
-    fs::{read_dir, File},
-    io::AsyncReadExt,
-    try_join,
+use mimalloc::MiMalloc;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
 };
-use tracing::info;
-use tracing_subscriber::{fmt::format::FmtSpan, EnvFilter};
+use tokio::{
+    signal::unix::{signal, SignalKind},
+    sync::watch,
+    time::timeout,
+};
+use tracing::{debug, info};
+use tracing_subscriber::EnvFilter;
 use twitch_api2::{
     twitch_oauth2::{AppAccessToken, Scope},
     HelixClient,
 };
 use twitch_irc::login::StaticLoginCredentials;
+
+const SHUTDOWN_TIMEOUT_SECONDS: u64 = 8;
+
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -40,93 +49,100 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
-        .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
         .init();
 
-    let config = Config::load().await?;
-    let logs = Logs::new(&config.logs_directory).await?;
+    let config = Config::load()?;
+    let mut db = clickhouse::Client::default()
+        .with_url(&config.clickhouse_url)
+        .with_database(&config.clickhouse_db);
+
+    if let Some(user) = &config.clickhouse_username {
+        db = db.with_user(user);
+    }
+
+    if let Some(password) = &config.clickhouse_password {
+        db = db.with_user(password);
+    }
 
     let args = Args::parse();
 
-    match args.subcommand {
-        None => run(config, logs).await,
-        Some(Command::Reindex { channels }) => {
-            let channel_list = channels.map_or_else(Vec::new, |channels| {
-                channels.split(',').map(str::to_owned).collect()
-            });
+    setup_db(&db).await.context("Could not run DB migrations")?;
 
-            reindex(config, logs, channel_list).await
-        }
-        Some(Command::PrintIndex { file_path }) => print_index(file_path).await,
-        Some(Command::Migrate { source_dir }) => migrate(config, logs, source_dir).await,
+    match args.subcommand {
+        None => run(config, db).await,
+        Some(Command::Migrate {
+            source_dir,
+            channel_id,
+            jobs,
+        }) => migrate(db, source_dir, channel_id, jobs).await,
     }
 }
 
-async fn run(config: Config, logs: Logs) -> anyhow::Result<()> {
+async fn run(config: Config, db: clickhouse::Client) -> anyhow::Result<()> {
+    let mut shutdown_rx = listen_shutdown().await;
+
     let helix_client: HelixClient<reqwest::Client> = HelixClient::default();
     let token = generate_token(&config).await?;
+
+    let (writer_tx, mut writer_handle) = create_writer(db.clone(), shutdown_rx.clone()).await?;
 
     let app = App {
         helix_client,
         token: Arc::new(token),
         users: Arc::new(DashMap::new()),
-        logs: logs.clone(),
         config: Arc::new(config),
+        db: Arc::new(db),
+        optout_codes: Arc::default(),
     };
 
     let login_credentials = StaticLoginCredentials::anonymous();
-    let bot_handle = tokio::spawn(bot::run(login_credentials, app.clone()));
-    let web_handle = tokio::spawn(web::run(app));
+    let mut bot_handle = tokio::spawn(bot::run(
+        login_credentials,
+        app.clone(),
+        writer_tx,
+        shutdown_rx.clone(),
+    ));
+    let mut web_handle = tokio::spawn(web::run(app, shutdown_rx.clone()));
 
-    try_join!(bot_handle, web_handle)?;
+    tokio::select! {
+        _ = shutdown_rx.changed() => {
+            debug!("Waiting for tasks to shut down");
 
-    Ok(())
-}
+            let started_at = Instant::now();
 
-async fn reindex(config: Config, logs: Logs, mut channels: Vec<String>) -> anyhow::Result<()> {
-    let helix_client: HelixClient<reqwest::Client> = HelixClient::default();
-    let token = generate_token(&config).await?;
+            let shutdown_future = try_join_all([bot_handle, web_handle, writer_handle]);
+            match timeout(Duration::from_secs(SHUTDOWN_TIMEOUT_SECONDS), shutdown_future).await {
+                Ok(Ok(_)) => {
+                    debug!("Cleanup finished in {}ms", started_at.elapsed().as_millis());
+                    Ok(())
+                }
+                Ok(Err(err)) => Err(anyhow!("Could not shut down properly: {err}")),
+                Err(_) => {
+                    Err(anyhow!("Tasks did not shut down after {} seconds", SHUTDOWN_TIMEOUT_SECONDS))
+                }
+            }
 
-    let app = App {
-        helix_client,
-        token: Arc::new(token),
-        users: Arc::new(DashMap::new()),
-        config: Arc::new(config),
-        logs,
-    };
-
-    populate_channel_list(&mut channels, &app).await?;
-
-    reindexer::run(app, &channels).await
-}
-
-async fn print_index(file_path: PathBuf) -> anyhow::Result<()> {
-    let mut file = File::open(&file_path).await?;
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf).await?;
-
-    for bytes in buf.chunks_exact(index::SIZE) {
-        let index = Index::from_bytes(bytes)?;
-        info!("Index: {index:?}");
+        }
+        _ = &mut bot_handle => {
+            Err(anyhow!("Bot task exited unexpectedly"))
+        }
+        _ = &mut web_handle => {
+            Err(anyhow!("Web task exited unexpectedly"))
+        }
+        _ = &mut writer_handle => {
+            Err(anyhow!("Writer task exited unexpectedly"))
+        }
     }
-
-    Ok(())
 }
 
-async fn migrate(config: Config, logs: Logs, source_logs_path: String) -> anyhow::Result<()> {
-    let helix_client: HelixClient<reqwest::Client> = HelixClient::default();
-    let token = generate_token(&config).await?;
-
-    let app = App {
-        helix_client,
-        token: Arc::new(token),
-        users: Arc::new(DashMap::new()),
-        logs,
-        config: Arc::new(config),
-    };
-
-    let migrator = Migrator::new(app, &source_logs_path).await?;
-    migrator.run().await
+async fn migrate(
+    db: clickhouse::Client,
+    source_logs_path: String,
+    channel_ids: Vec<String>,
+    jobs: usize,
+) -> anyhow::Result<()> {
+    let migrator = Migrator::new(db, source_logs_path, channel_ids).await?;
+    migrator.run(jobs).await
 }
 
 async fn generate_token(config: &Config) -> anyhow::Result<AppAccessToken> {
@@ -143,20 +159,25 @@ async fn generate_token(config: &Config) -> anyhow::Result<AppAccessToken> {
     Ok(token)
 }
 
-async fn populate_channel_list(channels: &mut Vec<String>, app: &App<'_>) -> anyhow::Result<()> {
-    if channels.is_empty() {
-        let mut dir = read_dir(&*app.logs.root_path).await?;
+async fn listen_shutdown() -> watch::Receiver<()> {
+    let shutdown_signals = [SignalKind::interrupt(), SignalKind::terminate()];
+    let mut futures = FuturesUnordered::new();
 
-        while let Some(entry) = dir.next_entry().await? {
-            if entry.metadata().await?.is_dir() {
-                let channel = entry
-                    .file_name()
-                    .to_str()
-                    .expect("invalid folder name")
-                    .to_owned();
-                channels.push(channel);
-            }
-        }
+    for signal_kind in shutdown_signals {
+        let mut listener = signal(signal_kind).unwrap();
+        futures.push(async move {
+            listener.recv().await;
+            signal_kind
+        });
     }
-    Ok(())
+
+    let (tx, rx) = watch::channel(());
+
+    tokio::spawn(async move {
+        futures.next().await;
+        info!("Received shutdown signal");
+        tx.send(()).unwrap();
+    });
+
+    rx
 }

@@ -1,14 +1,21 @@
 use super::{
-    responders::logs::{LogsResponse, LogsResponseType, ProcessedLogs, ProcessedLogsType},
+    responders::logs::LogsResponse,
     schema::{
-        AvailableLogDate, AvailableLogs, AvailableLogsParams, Channel, ChannelIdType,
-        ChannelLogsPath, ChannelParam, ChannelsList, LogsParams, UserLogsPath, UserParam,
+        AvailableLogs, AvailableLogsParams, Channel, ChannelIdType, ChannelLogsPath, ChannelParam,
+        ChannelsList, LogsParams, LogsPathChannel, UserLogsPath, UserParam,
     },
 };
 use crate::{
     app::App,
+    db::{
+        read_available_channel_logs, read_available_user_logs, read_channel,
+        read_random_channel_line, read_random_user_line, read_user,
+    },
     error::Error,
-    logs::schema::{ChannelLogDate, UserLogDate},
+    logs::{
+        schema::{ChannelLogDate, UserLogDate},
+        stream::LogsStream,
+    },
     Result,
 };
 use axum::{
@@ -17,6 +24,8 @@ use axum::{
     Extension, Json,
 };
 use chrono::{Datelike, Utc};
+use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use std::time::Duration;
 use tracing::debug;
 
 pub async fn get_channels(app: Extension<App<'_>>) -> Json<ChannelsList> {
@@ -42,36 +51,29 @@ pub async fn get_channel_logs(
 ) -> Result<LogsResponse> {
     debug!("Params: {logs_params:?}");
 
-    let channel_id = match channel_log_params.channel_id_type {
+    let channel_id = match channel_log_params.channel_info.channel_id_type {
         ChannelIdType::Name => app
-            .get_users(vec![], vec![channel_log_params.channel.clone()])
+            .get_users(
+                vec![],
+                vec![channel_log_params.channel_info.channel.clone()],
+            )
             .await?
             .into_keys()
             .next()
             .ok_or(Error::NotFound)?,
-        ChannelIdType::Id => channel_log_params.channel.clone(),
+        ChannelIdType::Id => channel_log_params.channel_info.channel.clone(),
     };
 
-    let log_date = ChannelLogDate::try_from(&channel_log_params)?;
+    app.check_opted_out(&channel_id, None)?;
+
+    let log_date = ChannelLogDate::try_from(channel_log_params.date)?;
     debug!("Querying logs for date {log_date:?}");
 
-    let lines = app.logs.read_channel(&channel_id, log_date).await?;
-
-    let response_type = if logs_params.raw {
-        LogsResponseType::Raw(lines)
-    } else {
-        let logs_type = if logs_params.json {
-            ProcessedLogsType::Json
-        } else {
-            ProcessedLogsType::Text
-        };
-
-        LogsResponseType::Processed(ProcessedLogs::parse_raw(lines, logs_type))
-    };
+    let stream = read_channel(&app.db, &channel_id, log_date, logs_params.reverse).await?;
 
     Ok(LogsResponse {
-        response_type,
-        reverse: logs_params.reverse,
+        response_type: logs_params.response_type(),
+        stream,
     })
 }
 
@@ -108,10 +110,10 @@ async fn get_user_logs(
 ) -> Result<LogsResponse> {
     let log_date = UserLogDate::try_from(&user_logs_path)?;
 
-    let channel_id = match user_logs_path.channel_id_type {
+    let channel_id = match user_logs_path.channel_info.channel_id_type {
         ChannelIdType::Name => {
             let (id, _) = app
-                .get_users(vec![], vec![user_logs_path.channel])
+                .get_users(vec![], vec![user_logs_path.channel_info.channel])
                 .await?
                 .into_iter()
                 .next()
@@ -119,26 +121,23 @@ async fn get_user_logs(
             id
         }
 
-        ChannelIdType::Id => user_logs_path.channel,
+        ChannelIdType::Id => user_logs_path.channel_info.channel,
     };
 
-    let lines = app.logs.read_user(&channel_id, &user_id, log_date).await?;
+    app.check_opted_out(&channel_id, Some(&user_id))?;
 
-    let response_type = if logs_params.raw {
-        LogsResponseType::Raw(lines)
-    } else {
-        let logs_type = if logs_params.json {
-            ProcessedLogsType::Json
-        } else {
-            ProcessedLogsType::Text
-        };
-
-        LogsResponseType::Processed(ProcessedLogs::parse_raw(lines, logs_type))
-    };
+    let stream = read_user(
+        &app.db,
+        &channel_id,
+        &user_id,
+        log_date,
+        logs_params.reverse,
+    )
+    .await?;
 
     Ok(LogsResponse {
-        response_type,
-        reverse: logs_params.reverse,
+        stream,
+        response_type: logs_params.response_type(),
     })
 }
 
@@ -151,47 +150,15 @@ pub async fn list_available_logs(
         ChannelParam::Channel(name) => app.get_user_id_by_name(&name).await?,
     };
 
-    let mut available_logs = if let Some(user) = user {
+    let available_logs = if let Some(user) = user {
         let user_id = match user {
             UserParam::UserId(id) => id,
             UserParam::User(name) => app.get_user_id_by_name(&name).await?,
         };
-        let user_logs = app
-            .logs
-            .get_available_user_logs(&channel_id, &user_id)
-            .await?;
-
-        let mut available_logs = Vec::new();
-        for (year, months) in user_logs {
-            let available_dates = months.into_iter().map(|month| AvailableLogDate {
-                year: year.to_string(),
-                month: month.to_string(),
-                day: None,
-            });
-            available_logs.extend(available_dates);
-        }
-        available_logs
+        read_available_user_logs(&app.db, &channel_id, &user_id).await?
     } else {
-        let channel_logs = app
-            .logs
-            .get_available_channel_logs(&channel_id, false)
-            .await?;
-
-        let mut available_logs = Vec::new();
-        for (year, months) in channel_logs {
-            for (month, days) in months {
-                for day in days {
-                    available_logs.push(AvailableLogDate {
-                        year: year.to_string(),
-                        month: month.to_string(),
-                        day: Some(day.to_string()),
-                    });
-                }
-            }
-        }
-        available_logs
+        read_available_channel_logs(&app.db, &channel_id).await?
     };
-    available_logs.reverse();
 
     if !available_logs.is_empty() {
         Ok(Json(AvailableLogs { available_logs }))
@@ -201,10 +168,13 @@ pub async fn list_available_logs(
 }
 
 pub async fn redirect_to_latest_channel_logs(
-    Path((channel_id_type, channel)): Path<(String, String)>,
+    Path(LogsPathChannel {
+        channel_id_type,
+        channel,
+    }): Path<LogsPathChannel>,
     RawQuery(query): RawQuery,
 ) -> Redirect {
-    let today = Utc::today();
+    let today = Utc::now();
     let year = today.year();
     let month = today.month();
     let day = today.day();
@@ -237,7 +207,7 @@ fn redirect_to_latest_user_logs(
     RawQuery(query): RawQuery,
     user_id_type: &str,
 ) -> Redirect {
-    let today = Utc::today();
+    let today = Utc::now();
     let year = today.year();
     let month = today.month();
 
@@ -252,31 +222,19 @@ fn redirect_to_latest_user_logs(
 pub async fn random_channel_line(
     app: Extension<App<'_>>,
     Path((channel_id_type, channel)): Path<(ChannelIdType, String)>,
-    Query(LogsParams { json, raw, reverse }): Query<LogsParams>,
+    Query(logs_params): Query<LogsParams>,
 ) -> Result<LogsResponse> {
     let channel_id = match channel_id_type {
         ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
         ChannelIdType::Id => channel,
     };
 
-    let random_line = app.logs.random_channel_line(&channel_id).await?;
-    let lines = vec![random_line];
-
-    let response_type = if raw {
-        LogsResponseType::Raw(lines)
-    } else {
-        let logs_type = if json {
-            ProcessedLogsType::Json
-        } else {
-            ProcessedLogsType::Text
-        };
-
-        LogsResponseType::Processed(ProcessedLogs::parse_raw(lines, logs_type))
-    };
+    let random_line = read_random_channel_line(&app.db, &channel_id).await?;
+    let stream = LogsStream::new_provided(vec![random_line])?;
 
     Ok(LogsResponse {
-        response_type,
-        reverse,
+        stream,
+        response_type: logs_params.response_type(),
     })
 }
 
@@ -297,35 +255,43 @@ pub async fn random_user_line_by_id(
     random_user_line(app, channel_id_type, channel, user_id, query).await
 }
 
-pub async fn random_user_line(
+async fn random_user_line(
     app: Extension<App<'_>>,
     channel_id_type: ChannelIdType,
     channel: String,
     user_id: String,
-    Query(LogsParams { json, raw, reverse }): Query<LogsParams>,
+    Query(logs_params): Query<LogsParams>,
 ) -> Result<LogsResponse> {
     let channel_id = match channel_id_type {
         ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
         ChannelIdType::Id => channel,
     };
 
-    let random_line = app.logs.random_user_line(&channel_id, &user_id).await?;
-    let lines = vec![random_line];
-
-    let response_type = if raw {
-        LogsResponseType::Raw(lines)
-    } else {
-        let logs_type = if json {
-            ProcessedLogsType::Json
-        } else {
-            ProcessedLogsType::Text
-        };
-
-        LogsResponseType::Processed(ProcessedLogs::parse_raw(lines, logs_type))
-    };
+    let random_line = read_random_user_line(&app.db, &channel_id, &user_id).await?;
+    let stream = LogsStream::new_provided(vec![random_line])?;
 
     Ok(LogsResponse {
-        response_type,
-        reverse,
+        stream,
+        response_type: logs_params.response_type(),
     })
+}
+
+pub async fn optout(app: Extension<App<'_>>) -> Json<String> {
+    let mut rng = thread_rng();
+    let optout_code: String = (0..5).map(|_| rng.sample(Alphanumeric) as char).collect();
+
+    app.optout_codes.insert(optout_code.clone());
+
+    {
+        let codes = app.optout_codes.clone();
+        let optout_code = optout_code.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+            if codes.remove(&optout_code).is_some() {
+                debug!("Dropping optout code {optout_code}");
+            }
+        });
+    }
+
+    Json(optout_code)
 }
