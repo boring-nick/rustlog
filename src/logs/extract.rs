@@ -20,6 +20,10 @@ impl MessageWithTags for twitch::Message {
     }
 }
 
+pub fn extract_user_id<T: MessageWithTags>(msg: &T) -> Option<&str> {
+    msg.get_tag(&Tag::UserId)
+}
+
 pub fn extract_channel_and_user_from_raw<T: MessageWithTags>(
     msg: &T,
 ) -> Option<(&str, Option<&str>)> {
