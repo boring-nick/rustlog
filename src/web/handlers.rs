@@ -1,7 +1,5 @@
-use std::time::{Duration, Instant};
-
 use super::{
-    responders::logs::{LogsResponse, LogsResponseType, ProcessedLogs, ProcessedLogsType},
+    responders::logs::LogsResponse,
     schema::{
         AvailableLogs, AvailableLogsParams, Channel, ChannelIdType, ChannelLogsPath, ChannelParam,
         ChannelsList, LogsParams, LogsPathChannel, UserLogsPath, UserParam,
@@ -14,7 +12,10 @@ use crate::{
         read_random_channel_line, read_random_user_line, read_user,
     },
     error::Error,
-    logs::schema::{ChannelLogDate, UserLogDate},
+    logs::{
+        schema::{ChannelLogDate, UserLogDate},
+        stream::LogsStream,
+    },
     Result,
 };
 use axum::{
@@ -24,6 +25,7 @@ use axum::{
 };
 use chrono::{Datelike, Utc};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use std::time::Duration;
 use tracing::debug;
 
 pub async fn get_channels(app: Extension<App<'_>>) -> Json<ChannelsList> {
@@ -67,28 +69,11 @@ pub async fn get_channel_logs(
     let log_date = ChannelLogDate::try_from(channel_log_params.date)?;
     debug!("Querying logs for date {log_date:?}");
 
-    let started_at = Instant::now();
-    let lines = read_channel(&app.db, &channel_id, log_date).await?;
-    debug!("Querying DB took {}ms", started_at.elapsed().as_millis());
-
-    let response_type = if logs_params.raw {
-        LogsResponseType::Raw(lines)
-    } else {
-        let logs_type = if logs_params.json {
-            ProcessedLogsType::Json
-        } else {
-            ProcessedLogsType::Text
-        };
-
-        let started_at = Instant::now();
-        let response = LogsResponseType::Processed(ProcessedLogs::parse_raw(lines, logs_type));
-        debug!("Parsing logs took {}ms", started_at.elapsed().as_millis());
-        response
-    };
+    let stream = read_channel(&app.db, &channel_id, log_date, logs_params.reverse).await?;
 
     Ok(LogsResponse {
-        response_type,
-        reverse: logs_params.reverse,
+        response_type: logs_params.response_type(),
+        stream,
     })
 }
 
@@ -141,23 +126,18 @@ async fn get_user_logs(
 
     app.check_opted_out(&channel_id, Some(&user_id))?;
 
-    let lines = read_user(&app.db, &channel_id, &user_id, log_date).await?;
-
-    let response_type = if logs_params.raw {
-        LogsResponseType::Raw(lines)
-    } else {
-        let logs_type = if logs_params.json {
-            ProcessedLogsType::Json
-        } else {
-            ProcessedLogsType::Text
-        };
-
-        LogsResponseType::Processed(ProcessedLogs::parse_raw(lines, logs_type))
-    };
+    let stream = read_user(
+        &app.db,
+        &channel_id,
+        &user_id,
+        log_date,
+        logs_params.reverse,
+    )
+    .await?;
 
     Ok(LogsResponse {
-        response_type,
-        reverse: logs_params.reverse,
+        stream,
+        response_type: logs_params.response_type(),
     })
 }
 
@@ -242,7 +222,7 @@ fn redirect_to_latest_user_logs(
 pub async fn random_channel_line(
     app: Extension<App<'_>>,
     Path((channel_id_type, channel)): Path<(ChannelIdType, String)>,
-    Query(LogsParams { json, raw, reverse }): Query<LogsParams>,
+    Query(logs_params): Query<LogsParams>,
 ) -> Result<LogsResponse> {
     let channel_id = match channel_id_type {
         ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
@@ -250,23 +230,11 @@ pub async fn random_channel_line(
     };
 
     let random_line = read_random_channel_line(&app.db, &channel_id).await?;
-    let lines = vec![random_line];
-
-    let response_type = if raw {
-        LogsResponseType::Raw(lines)
-    } else {
-        let logs_type = if json {
-            ProcessedLogsType::Json
-        } else {
-            ProcessedLogsType::Text
-        };
-
-        LogsResponseType::Processed(ProcessedLogs::parse_raw(lines, logs_type))
-    };
+    let stream = LogsStream::new_provided(vec![random_line])?;
 
     Ok(LogsResponse {
-        response_type,
-        reverse,
+        stream,
+        response_type: logs_params.response_type(),
     })
 }
 
@@ -292,7 +260,7 @@ async fn random_user_line(
     channel_id_type: ChannelIdType,
     channel: String,
     user_id: String,
-    Query(LogsParams { json, raw, reverse }): Query<LogsParams>,
+    Query(logs_params): Query<LogsParams>,
 ) -> Result<LogsResponse> {
     let channel_id = match channel_id_type {
         ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
@@ -300,23 +268,11 @@ async fn random_user_line(
     };
 
     let random_line = read_random_user_line(&app.db, &channel_id, &user_id).await?;
-    let lines = vec![random_line];
-
-    let response_type = if raw {
-        LogsResponseType::Raw(lines)
-    } else {
-        let logs_type = if json {
-            ProcessedLogsType::Json
-        } else {
-            ProcessedLogsType::Text
-        };
-
-        LogsResponseType::Processed(ProcessedLogs::parse_raw(lines, logs_type))
-    };
+    let stream = LogsStream::new_provided(vec![random_line])?;
 
     Ok(LogsResponse {
-        response_type,
-        reverse,
+        stream,
+        response_type: logs_params.response_type(),
     })
 }
 

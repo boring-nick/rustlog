@@ -1,3 +1,4 @@
+use super::responders::logs::LogsResponseType;
 use crate::logs::schema::{ChannelLogDate, UserLogDate};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -83,6 +84,18 @@ pub struct LogsParams {
     pub raw: bool,
     #[serde(default, deserialize_with = "deserialize_bool_param")]
     pub reverse: bool,
+}
+
+impl LogsParams {
+    pub fn response_type(&self) -> LogsResponseType {
+        if self.raw {
+            LogsResponseType::Raw
+        } else if self.json {
+            LogsResponseType::Json
+        } else {
+            LogsResponseType::Text
+        }
+    }
 }
 
 fn deserialize_bool_param<'de, D>(deserializer: D) -> Result<bool, D::Error>

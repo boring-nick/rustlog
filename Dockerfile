@@ -4,8 +4,9 @@ COPY web .
 RUN yarn install --ignore-optional
 RUN yarn build
 
-FROM rust:bullseye AS chef
+FROM rust:1.70-bullseye AS chef
 USER root
+ENV CARGO_PROFILE_RELEASE_LTO=true
 RUN cargo install cargo-chef
 WORKDIR /app
 

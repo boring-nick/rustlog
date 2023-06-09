@@ -113,6 +113,11 @@ impl<'a> Bot<'a> {
     }
 
     async fn write_message(&self, msg: ServerMessage) -> anyhow::Result<()> {
+        // Ignore
+        if matches!(msg, ServerMessage::RoomState(_)) {
+            return Ok(());
+        }
+
         let irc_message = IRCMessage::from(msg);
 
         if let Some((channel_id, maybe_user_id)) = extract_channel_and_user_from_raw(&irc_message) {

@@ -3,33 +3,32 @@ pub mod writer;
 
 use crate::{
     error::Error,
-    logs::schema::{ChannelLogDate, UserLogDate},
+    logs::{
+        schema::{ChannelLogDate, UserLogDate},
+        stream::LogsStream,
+    },
     web::schema::AvailableLogDate,
     Result,
 };
 use chrono::{Datelike, NaiveDateTime};
 use clickhouse::Client;
 use rand::{seq::IteratorRandom, thread_rng};
-use tracing::debug;
 
 pub async fn read_channel(
     db: &Client,
     channel_id: &str,
     log_date: ChannelLogDate,
-) -> Result<Vec<String>> {
-    let messages = db
-        .query("SELECT raw FROM message WHERE channel_id = ? AND toStartOfDay(timestamp) = ? ORDER BY timestamp ASC")
+    reverse: bool,
+) -> Result<LogsStream> {
+    let suffix = if reverse { "DESC" } else { "ASC" };
+    let query = format!("SELECT raw FROM message WHERE channel_id = ? AND toStartOfDay(timestamp) = ? ORDER BY timestamp {suffix}");
+
+    let cursor = db
+        .query(&query)
         .bind(channel_id)
         .bind(log_date.to_string())
-        .fetch_all()
-        .await?;
-
-    if messages.is_empty() {
-        return Err(Error::NotFound);
-    }
-
-    debug!("Read {} messages from DB", messages.len());
-    Ok(messages)
+        .fetch()?;
+    LogsStream::new_cursor(cursor).await
 }
 
 pub async fn read_user(
@@ -37,21 +36,19 @@ pub async fn read_user(
     channel_id: &str,
     user_id: &str,
     log_date: UserLogDate,
-) -> Result<Vec<String>> {
-    let messages = db
-        .query("SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND toStartOfMonth(timestamp) = ? ORDER BY timestamp ASC")
+    reverse: bool,
+) -> Result<LogsStream> {
+    let suffix = if reverse { "DESC" } else { "ASC" };
+    let query = format!("SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND toStartOfMonth(timestamp) = ? ORDER BY timestamp {suffix}");
+
+    let cursor = db
+        .query(&query)
         .bind(channel_id)
         .bind(user_id)
         .bind(format!("{}-{:0>2}-1", log_date.year, log_date.month))
-        .fetch_all()
-        .await?;
+        .fetch()?;
 
-    if messages.is_empty() {
-        return Err(Error::NotFound);
-    }
-
-    debug!("Read {} messages from DB", messages.len());
-    Ok(messages)
+    LogsStream::new_cursor(cursor).await
 }
 
 pub async fn read_available_channel_logs(
@@ -118,6 +115,10 @@ pub async fn read_random_user_line(db: &Client, channel_id: &str, user_id: &str)
         .fetch_one::<u64>()
         .await?;
 
+    if total_count == 0 {
+        return Err(Error::NotFound);
+    }
+
     let offset = {
         let mut rng = thread_rng();
         (0..total_count).choose(&mut rng).ok_or(Error::NotFound)
@@ -135,8 +136,9 @@ pub async fn read_random_user_line(db: &Client, channel_id: &str, user_id: &str)
         .bind(offset)
         .bind(channel_id)
         .bind(user_id)
-        .fetch_one::<String>()
-        .await?;
+        .fetch_optional::<String>()
+        .await?
+        .ok_or(Error::NotFound)?;
 
     Ok(text)
 }
@@ -147,6 +149,10 @@ pub async fn read_random_channel_line(db: &Client, channel_id: &str) -> Result<S
         .bind(channel_id)
         .fetch_one::<u64>()
         .await?;
+
+    if total_count == 0 {
+        return Err(Error::NotFound);
+    }
 
     let offset = {
         let mut rng = thread_rng();
@@ -163,8 +169,9 @@ pub async fn read_random_channel_line(db: &Client, channel_id: &str) -> Result<S
         .bind(channel_id)
         .bind(offset)
         .bind(channel_id)
-        .fetch_one::<String>()
-        .await?;
+        .fetch_optional::<String>()
+        .await?
+        .ok_or(Error::NotFound)?;
 
     Ok(text)
 }
