@@ -161,14 +161,17 @@ impl Migrator {
 
     async fn migrate_reader<'a, R: BufRead>(
         &self,
-        reader: R,
+        mut reader: R,
         datetime: DateTime<Utc>,
         channel_id: &'a str,
         inserter: &mut Inserter<Message<'a>>,
     ) -> anyhow::Result<()> {
-        for line in reader.lines() {
-            let line = line?;
+        let mut buf = Vec::with_capacity(512);
+        while reader.read_until(b'\n', &mut buf)? != 0 {
+            let line = String::from_utf8(buf).unwrap();
             write_line(channel_id, line, inserter, datetime).await?;
+
+            buf = Vec::with_capacity(512);
         }
 
         let stats = inserter.commit().await?;
