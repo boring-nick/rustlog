@@ -1,4 +1,5 @@
 use crate::{error::Error, Result};
+use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::{
     collections::BTreeMap,
     fs::{self, read_dir},
@@ -75,39 +76,46 @@ impl LogsReader {
 
                     if month_entry.metadata()?.is_dir() {
                         let month_dir = read_dir(month_entry.path())?;
-                        let mut days = Vec::new();
 
-                        for day_entry in month_dir {
-                            let day_entry = day_entry?;
+                        let mut days: Vec<u32> = month_dir
+                            .collect::<Vec<_>>()
+                            .into_par_iter()
+                            .filter_map(|day_entry| {
+                                let day_entry = day_entry.expect("Could not read day");
 
-                            if day_entry.metadata()?.is_dir()
-                                && day_entry.file_name().to_str() != Some("users")
-                            {
-                                let day = day_entry
-                                    .file_name()
-                                    .to_str()
-                                    .and_then(|name| name.parse().ok())
-                                    .expect("invalid log entry day name");
-
-                                let uncompressed_channel_file_path =
-                                    day_entry.path().join(UNCOMPRESSED_CHANNEL_FILE);
-
-                                if fs::metadata(&uncompressed_channel_file_path)
-                                    .map_or(false, |metadata| metadata.is_file())
+                                if day_entry
+                                    .metadata()
+                                    .expect("Could not read day metadata")
+                                    .is_dir()
+                                    && day_entry.file_name().to_str() != Some("users")
                                 {
-                                    days.push(day);
-                                } else if include_compressed {
-                                    let compressed_channel_file_path =
-                                        day_entry.path().join(COMPRESSED_CHANNEL_FILE);
+                                    let day: u32 = day_entry
+                                        .file_name()
+                                        .to_str()
+                                        .and_then(|name| name.parse().ok())
+                                        .expect("invalid log entry day name");
 
-                                    if fs::metadata(&compressed_channel_file_path)
+                                    let uncompressed_channel_file_path =
+                                        day_entry.path().join(UNCOMPRESSED_CHANNEL_FILE);
+
+                                    if fs::metadata(uncompressed_channel_file_path)
                                         .map_or(false, |metadata| metadata.is_file())
                                     {
-                                        days.push(day);
+                                        return Some(day);
+                                    } else if include_compressed {
+                                        let compressed_channel_file_path =
+                                            day_entry.path().join(COMPRESSED_CHANNEL_FILE);
+
+                                        if fs::metadata(compressed_channel_file_path)
+                                            .map_or(false, |metadata| metadata.is_file())
+                                        {
+                                            return Some(day);
+                                        }
                                     }
                                 }
-                            }
-                        }
+                                None
+                            })
+                            .collect();
 
                         days.sort_unstable();
 
