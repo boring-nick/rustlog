@@ -9,7 +9,6 @@ use anyhow::anyhow;
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 use clickhouse::inserter::Inserter;
 use flate2::bufread::GzDecoder;
-use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 use std::{
     borrow::Cow,
     convert::TryInto,
@@ -194,10 +193,8 @@ async fn write_lines_buffer<'a>(
     datetime: DateTime<Utc>,
     file_path: &Path,
 ) -> anyhow::Result<()> {
-    let messages: Vec<_> = buffer
-        .into_par_iter()
-        .enumerate()
-        .filter_map(|(i, raw)| match twitch::Message::parse(raw) {
+    for (i, raw) in buffer.into_iter().enumerate() {
+        match twitch::Message::parse(raw) {
             Some(irc_message) => {
                 let timestamp = extract_raw_timestamp(&irc_message)
                     .unwrap_or_else(|| datetime.timestamp_millis() as u64);
@@ -207,22 +204,18 @@ async fn write_lines_buffer<'a>(
                     .map(str::to_owned)
                     .unwrap_or_default();
 
-                Some(Message {
+                let message = Message {
                     channel_id: Cow::Borrowed(channel_id),
                     user_id: Cow::Owned(user_id),
                     timestamp,
                     raw: Cow::Owned(irc_message.into_raw()),
-                })
+                };
+                inserter.write(&message).await?;
             }
             None => {
                 warn!("Could not parse message (line {i} of file {file_path:?})");
-                None
             }
-        })
-        .collect();
-
-    for message in messages {
-        inserter.write(&message).await?;
+        }
     }
 
     let stats = inserter.commit().await?;
