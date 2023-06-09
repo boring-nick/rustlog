@@ -19,9 +19,9 @@ pub fn parse_raw(lines: Vec<String>) -> Vec<twitch::Message> {
         .collect()
 }
 
-pub fn parse_messages<'a>(
-    irc_messages: &'a [twitch::Message],
-) -> impl ParallelIterator<Item = Message<'a>> {
+pub fn parse_messages(
+    irc_messages: &[twitch::Message],
+) -> impl ParallelIterator<Item = Message<'_>> {
     irc_messages
         .par_iter()
         .filter_map(|irc_message| match Message::from_irc_message(irc_message) {
