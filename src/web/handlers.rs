@@ -155,8 +155,10 @@ pub async fn list_available_logs(
             UserParam::UserId(id) => id,
             UserParam::User(name) => app.get_user_id_by_name(&name).await?,
         };
+        app.check_opted_out(&channel_id, Some(&user_id))?;
         read_available_user_logs(&app.db, &channel_id, &user_id).await?
     } else {
+        app.check_opted_out(&channel_id, None)?;
         read_available_channel_logs(&app.db, &channel_id).await?
     };
 
