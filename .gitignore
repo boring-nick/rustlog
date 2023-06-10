@@ -1,3 +1,4 @@
 /target
 /logs*
 config.json
+/ch-data
