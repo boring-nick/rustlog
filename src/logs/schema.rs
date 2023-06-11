@@ -207,9 +207,9 @@ impl<'a> Display for Message<'a> {
         let text = &self.text;
 
         if !username.is_empty() {
-            write!(f, "[{timestamp}] {channel} {username}: {text}")
+            write!(f, "[{timestamp}] #{channel} {username}: {text}")
         } else {
-            write!(f, "[{timestamp}] {channel} {text}")
+            write!(f, "[{timestamp}] #{channel} {text}")
         }
     }
 }

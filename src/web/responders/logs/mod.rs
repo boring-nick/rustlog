@@ -7,11 +7,17 @@ use crate::logs::{schema::Message, stream::LogsStream};
 use aide::OperationOutput;
 use axum::{
     body::StreamBody,
-    response::{IntoResponse, Response},
+    http::HeaderValue,
+    response::{IntoResponse, IntoResponseParts, Response},
     Json,
 };
 use futures::TryStreamExt;
 use indexmap::IndexMap;
+use mime_guess::{
+    mime::{APPLICATION_JSON, TEXT_PLAIN_UTF_8},
+    Mime,
+};
+use reqwest::header::CONTENT_TYPE;
 use schemars::JsonSchema;
 
 pub struct LogsResponse {
@@ -39,18 +45,26 @@ impl IntoResponse for LogsResponse {
                     line.push('\n');
                     line
                 });
-                StreamBody::new(stream).into_response()
+
+                (set_content_type(&TEXT_PLAIN_UTF_8), StreamBody::new(stream)).into_response()
             }
             LogsResponseType::Text => {
-                let text_stream = TextLogsStream::new(self.stream);
-                StreamBody::new(text_stream).into_response()
+                let stream = TextLogsStream::new(self.stream);
+                (set_content_type(&TEXT_PLAIN_UTF_8), StreamBody::new(stream)).into_response()
             }
             LogsResponseType::Json => {
-                let json_stream = JsonLogsStream::new(self.stream);
-                StreamBody::new(json_stream).into_response()
+                let stream = JsonLogsStream::new(self.stream);
+                (set_content_type(&APPLICATION_JSON), StreamBody::new(stream)).into_response()
             }
         }
     }
+}
+
+fn set_content_type(content_type: &'static Mime) -> impl IntoResponseParts {
+    [(
+        CONTENT_TYPE,
+        HeaderValue::from_static(content_type.as_ref()),
+    )]
 }
 
 impl OperationOutput for LogsResponse {
