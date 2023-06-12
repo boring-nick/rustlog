@@ -76,14 +76,13 @@ pub enum MessageType {
 
 impl<'a> Message<'a> {
     pub fn from_irc_message(irc_message: &'a twitch::Message) -> anyhow::Result<Self> {
-        let tags = irc_message.tags().context("Message has no tags")?;
         let channel = irc_message
             .channel()
             .context("Missing channel")?
             .trim_start_matches('#');
 
-        let raw_timestamp = tags
-            .get(&Tag::TmiSentTs)
+        let raw_timestamp = irc_message
+            .tag(Tag::TmiSentTs)
             .context("Missing timestamp tag")?
             .parse::<i64>()
             .context("Invalid timestamp")?;
@@ -92,7 +91,9 @@ impl<'a> Message<'a> {
             .single()
             .context("Invalid timestamp")?;
 
-        let response_tags = tags
+        let response_tags = irc_message
+            .tags()
+            .unwrap_or_default()
             .iter()
             .map(|(key, value)| (key.as_str(), Cow::Borrowed(*value)))
             .collect();
@@ -102,15 +103,15 @@ impl<'a> Message<'a> {
                 let raw_text = irc_message.params().context("Privmsg has no params")?;
                 let text = extract_message_text(raw_text);
 
-                let display_name = *tags
-                    .get(&Tag::DisplayName)
+                let display_name = irc_message
+                    .tag(Tag::DisplayName)
                     .context("Missing display name tag")?;
                 let username = irc_message
                     .prefix()
                     .context("Message has no prefix")?
                     .nick
                     .context("Missing nickname")?;
-                let id = tags.get(&Tag::Id).copied().unwrap_or_default();
+                let id = irc_message.tag(Tag::Id).unwrap_or_default();
 
                 Ok(Self {
                     text: Cow::Borrowed(text),
@@ -132,7 +133,7 @@ impl<'a> Message<'a> {
                         let user_login = extract_message_text(user_login);
                         username = Some(user_login);
 
-                        match tags.get(&Tag::BanDuration) {
+                        match irc_message.tag(Tag::BanDuration) {
                             Some(ban_duration) => {
                                 format!(
                                     "{user_login} has been timed out for {ban_duration} seconds"
@@ -159,8 +160,8 @@ impl<'a> Message<'a> {
                 })
             }
             Command::UserNotice => {
-                let system_message = tags
-                    .get(&Tag::SystemMsg)
+                let system_message = irc_message
+                    .tag(Tag::SystemMsg)
                     .context("System message tag missing")?;
                 let system_message = twitch::unescape(system_message);
 
@@ -171,11 +172,11 @@ impl<'a> Message<'a> {
                     Cow::Owned(system_message)
                 };
 
-                let display_name = *tags
-                    .get(&Tag::DisplayName)
+                let display_name = irc_message
+                    .tag(Tag::DisplayName)
                     .context("Missing display name tag")?;
-                let username = *tags.get(&Tag::Login).context("Missing login tag")?;
-                let id = *tags.get(&Tag::Id).context("Missing message id tag")?;
+                let username = irc_message.tag(Tag::Login).context("Missing login tag")?;
+                let id = irc_message.tag(Tag::Id).context("Missing message id tag")?;
 
                 let response_tags = response_tags
                     .into_iter()
