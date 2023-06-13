@@ -10,9 +10,9 @@ pub fn parse_raw(lines: Vec<String>) -> Vec<twitch::Message> {
     lines
         .into_par_iter()
         .filter_map(|raw| match twitch::Message::parse(raw) {
-            Some(msg) => Some(msg),
-            None => {
-                warn!("Could not parse message");
+            Ok(msg) => Some(msg),
+            Err(err) => {
+                warn!("Could not parse message `{err}`");
                 None
             }
         })

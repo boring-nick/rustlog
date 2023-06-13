@@ -208,7 +208,7 @@ async fn write_line<'a>(
         raw,
         twitch::whitelist!(TmiSentTs, UserId, TargetUserId),
     ) {
-        Some(irc_message) => {
+        Ok(irc_message) => {
             let timestamp = extract_raw_timestamp(&irc_message)
                 .unwrap_or_else(|| datetime.timestamp_millis() as u64);
             let user_id = extract_user_id(&irc_message).unwrap_or_default();
@@ -224,8 +224,8 @@ async fn write_line<'a>(
             let message: Message<'static> = unsafe { std::mem::transmute(message) };
             inserter.write(&message).await?;
         }
-        None => {
-            warn!("Could not parse message");
+        Err(msg) => {
+            warn!("Could not parse message `{msg}`");
         }
     }
 
