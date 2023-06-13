@@ -20,6 +20,7 @@ use std::{
 };
 use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};
+use twitch::Command;
 
 const INSERT_BATCH_SIZE: u64 = 10_000_000;
 
@@ -211,7 +212,15 @@ async fn write_line<'a>(
         Ok(irc_message) => {
             let timestamp = extract_raw_timestamp(&irc_message)
                 .unwrap_or_else(|| datetime.timestamp_millis() as u64);
-            let user_id = extract_user_id(&irc_message).unwrap_or_default();
+            let user_id = extract_user_id(&irc_message).unwrap_or_else(|| {
+                if *irc_message.command() == Command::Privmsg {
+                    warn!(
+                        "Could not extract user id from PRIVMSG, partially malformed message: `{}`",
+                        irc_message.raw()
+                    );
+                }
+                ""
+            });
 
             let message = Message {
                 channel_id: Cow::Borrowed(channel_id),
