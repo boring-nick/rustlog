@@ -10,7 +10,6 @@ const CONFIG_FILE_NAME: &str = "config.json";
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
-    // pub logs_directory: String,
     pub clickhouse_url: String,
     pub clickhouse_db: String,
     pub clickhouse_username: Option<String>,

@@ -3,7 +3,7 @@
 Rustlog supports migrating your existing data from justlog. This process will read all log files and write them into the database.
 
 ## Config
-Rustlog uses a config format nearly identical to justlog, however you still need to add Clickhouse connection settings to it. See [config.example.json](../config.example.json) for the keys starting with `clickhouse`.
+Rustlog uses a config format nearly identical to justlog, however you still need to add Clickhouse connection settings to it. See [CONFIG.md](./CONFIG.md) for the keys starting with `clickhouse`.
 
 After this, you should have a running rustlog instance logging new messages.
 
