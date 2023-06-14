@@ -12,4 +12,20 @@ Available options:
 - `clientId` (string): Twitch client id.
 - `clientSecret` (string): Twitch client secret.
 - `admins` (array of strings): List of usernames who are allowed to use administration commands.
-- `optOut` (object of strings: booleans): Liste of user ids who opted out from being logged.
+- `optOut` (object of strings: booleans): List of user ids who opted out from being logged.
+
+Example config:
+```json
+{
+  "clickhouseUrl": "http://clickhouse:8123",
+  "clickhouseDb": "rustlog",
+  "clickhouseUsername": null,
+  "clickhousePassword": null,
+  "listenAddress": "0.0.0.0:8025",
+  "channels": ["12345"],
+  "clientID": "id",
+  "clientSecret": "secret",
+  "admins": [],
+  "optOut": {}
+}
+```

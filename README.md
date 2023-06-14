@@ -6,7 +6,7 @@ Rustlog is a Twitch logging service based on [justlog](https://github.com/gempir
 
 ## Installation
 
-Create a `config.json` file (see [config.example.json](./config.example.json))
+Create a `config.json` file (see [CONFIG.md](./docs/CONFIG.md))
 
 ### Docker
 ```yaml
