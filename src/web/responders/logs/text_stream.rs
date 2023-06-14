@@ -31,8 +31,8 @@ impl Stream for TextLogsStream {
         let fut = self.inner.next();
         pin!(fut);
 
-        match fut.poll(cx) {
-            Poll::Ready(Some(result)) => match result {
+        fut.poll(cx).map(|item| {
+            item.map(|result| match result {
                 Ok(chunk) => {
                     let irc_messages = parse_raw(chunk);
                     let messages: Vec<_> = parse_messages(&irc_messages).collect();
@@ -40,12 +40,10 @@ impl Stream for TextLogsStream {
                     let mut text = messages.iter().join('\n').to_string();
                     text.push('\n');
 
-                    Poll::Ready(Some(Ok(text)))
+                    Ok(text)
                 }
-                Err(err) => Poll::Ready(Some(Err(err.1))),
-            },
-            Poll::Ready(None) => Poll::Ready(None),
-            Poll::Pending => Poll::Pending,
-        }
+                Err(err) => Err(err.1),
+            })
+        })
     }
 }
