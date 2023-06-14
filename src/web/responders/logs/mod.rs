@@ -1,8 +1,11 @@
 mod join_iter;
 mod json_stream;
+mod ndjson_stream;
 mod text_stream;
 
-use self::{json_stream::JsonLogsStream, text_stream::TextLogsStream};
+use self::{
+    json_stream::JsonLogsStream, ndjson_stream::NdJsonLogsStream, text_stream::TextLogsStream,
+};
 use crate::logs::{schema::Message, stream::LogsStream};
 use aide::OperationOutput;
 use axum::{
@@ -13,10 +16,7 @@ use axum::{
 };
 use futures::TryStreamExt;
 use indexmap::IndexMap;
-use mime_guess::{
-    mime::{APPLICATION_JSON, TEXT_PLAIN_UTF_8},
-    Mime,
-};
+use mime_guess::mime::{APPLICATION_JSON, TEXT_PLAIN_UTF_8};
 use reqwest::header::CONTENT_TYPE;
 use schemars::JsonSchema;
 
@@ -29,6 +29,7 @@ pub enum LogsResponseType {
     Raw,
     Text,
     Json,
+    NdJson,
 }
 
 /// Used for schema only, actual serialization is manual
@@ -56,11 +57,19 @@ impl IntoResponse for LogsResponse {
                 let stream = JsonLogsStream::new(self.stream);
                 (set_content_type(&APPLICATION_JSON), StreamBody::new(stream)).into_response()
             }
+            LogsResponseType::NdJson => {
+                let stream = NdJsonLogsStream::new(self.stream);
+                (
+                    set_content_type(&"application/x-ndjson"),
+                    StreamBody::new(stream),
+                )
+                    .into_response()
+            }
         }
     }
 }
 
-fn set_content_type(content_type: &'static Mime) -> impl IntoResponseParts {
+fn set_content_type(content_type: &'static impl AsRef<str>) -> impl IntoResponseParts {
     [(
         CONTENT_TYPE,
         HeaderValue::from_static(content_type.as_ref()),

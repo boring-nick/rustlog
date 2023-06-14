@@ -44,6 +44,7 @@ services:
 
 - Significantly better storage efficiency (2x+ improvement) thanks to not duplicating log files and better compression (using ZSTD in Clickhouse)
 - Blazing fast log queries with response streaming and a [highly performant IRC parser](https://github.com/jprochazk/twitch-rs)
+- Support for ndjson logs responses
 
 ## Migrating from justlog
 See [MIGRATION.md](./docs/MIGRATION.md)

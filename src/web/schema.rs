@@ -84,6 +84,8 @@ pub struct LogsParams {
     pub raw: bool,
     #[serde(default, deserialize_with = "deserialize_bool_param")]
     pub reverse: bool,
+    #[serde(default, deserialize_with = "deserialize_bool_param")]
+    pub ndjson: bool,
 }
 
 impl LogsParams {
@@ -92,6 +94,8 @@ impl LogsParams {
             LogsResponseType::Raw
         } else if self.json {
             LogsResponseType::Json
+        } else if self.ndjson {
+            LogsResponseType::NdJson
         } else {
             LogsResponseType::Text
         }
