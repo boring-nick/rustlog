@@ -57,14 +57,16 @@ impl Stream for JsonLogsStream {
                         buf.extend_from_slice(HEADER.as_bytes());
                         self.is_start = false;
 
-                        if let Some(message) = messages.pop_front() {
+                        if let Some(mut message) = messages.pop_front() {
+                            message.unescape_tags();
                             serde_json::to_writer(&mut buf, &message).unwrap();
                         }
                     }
 
                     let serialized_messages: Vec<_> = messages
                         .into_par_iter()
-                        .map(|message| {
+                        .map(|mut message| {
+                            message.unescape_tags();
                             let mut message_buf = Vec::with_capacity(JSON_MESSAGE_SIZE);
                             serde_json::to_writer(&mut message_buf, &message).unwrap();
                             message_buf

@@ -198,6 +198,13 @@ impl<'a> Message<'a> {
             other => Err(anyhow!("Unsupported message type: {other:?}")),
         }
     }
+
+    pub fn unescape_tags(&mut self) {
+        for value in self.tags.values_mut() {
+            let new_value = twitch::unescape(value);
+            *value = Cow::Owned(new_value);
+        }
+    }
 }
 
 impl<'a> Display for Message<'a> {
