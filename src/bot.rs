@@ -1,6 +1,6 @@
 use crate::{
     app::App,
-    db::schema::Message,
+    db::{delete_user_logs, schema::Message},
     logs::extract::{extract_channel_and_user_from_raw, extract_raw_timestamp},
     ShutdownRx,
 };
@@ -180,6 +180,10 @@ impl<'a> Bot<'a> {
     async fn optout_user(&self, args: &[&str], sender_id: &str) -> anyhow::Result<()> {
         let code = args.first().context("No optout code provided")?;
         if self.app.optout_codes.remove(*code).is_some() {
+            delete_user_logs(&self.app.db, sender_id)
+                .await
+                .context("Could not delete logs")?;
+
             self.app.config.opt_out.insert(sender_id.to_owned(), true);
             self.app.config.save()?;
             info!("User {sender_id} opted out");
