@@ -13,7 +13,6 @@ use tokio::{
 use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tracing::{debug, error, info};
 
-const FLUSH_INTERVAL_SECONDS: u64 = 10;
 const CHUNK_CAPACITY: usize = 750_000;
 const RETRY_COUNT: usize = 5;
 const RETRY_INTERVAL_SECONDS: u64 = 5;
@@ -29,12 +28,12 @@ lazy_static! {
 pub async fn create_writer(
     db: Client,
     mut shutdown_rx: ShutdownRx,
+    flush_interval: u64,
 ) -> anyhow::Result<(Sender<Message<'static>>, JoinHandle<()>)> {
     let (tx, rx) = channel(CHUNK_CAPACITY);
 
     let chunks_stream = futures::StreamExt::enumerate(
-        ReceiverStream::new(rx)
-            .chunks_timeout(CHUNK_CAPACITY, Duration::from_secs(FLUSH_INTERVAL_SECONDS)),
+        ReceiverStream::new(rx).chunks_timeout(CHUNK_CAPACITY, Duration::from_secs(flush_interval)),
     );
     let mut chunks_stream = Box::pin(chunks_stream);
 
