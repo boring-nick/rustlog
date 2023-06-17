@@ -17,7 +17,6 @@ use arc_swap::ArcSwap;
 use args::{Args, Command};
 use clap::Parser;
 use config::Config;
-use dashmap::DashMap;
 use db::{setup_db, writer::create_writer};
 use futures::{future::try_join_all, stream::FuturesUnordered, StreamExt};
 use migrator::Migrator;
@@ -39,7 +38,7 @@ use twitch_api2::{
 };
 use twitch_irc::login::StaticLoginCredentials;
 
-use crate::db::read_all_available_channel_logs;
+use crate::{app::cache::UsersCache, db::read_all_available_channel_logs};
 
 const SHUTDOWN_TIMEOUT_SECONDS: u64 = 8;
 
@@ -102,7 +101,7 @@ async fn run(config: Config, db: clickhouse::Client) -> anyhow::Result<()> {
     let app = App {
         helix_client,
         token: Arc::new(token),
-        users: Arc::new(DashMap::new()),
+        users: UsersCache::default(),
         config: Arc::new(config),
         db: Arc::new(db),
         optout_codes: Arc::default(),
