@@ -1,8 +1,19 @@
-use crate::{config::Config, error::Error, Result};
+use crate::{
+    config::Config,
+    db::{read_all_available_channel_logs, AvailableChannelLogs},
+    error::Error,
+    Result,
+};
 use anyhow::Context;
+use arc_swap::ArcSwap;
 use dashmap::{DashMap, DashSet};
-use std::{collections::HashMap, sync::Arc};
-use tracing::debug;
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tokio::time::sleep;
+use tracing::{debug, error};
 use twitch_api2::{helix::users::GetUsersRequest, twitch_oauth2::AppAccessToken, HelixClient};
 
 #[derive(Clone)]
@@ -11,6 +22,7 @@ pub struct App<'a> {
     pub token: Arc<AppAccessToken>,
     pub users: Arc<DashMap<String, String>>, // User id, login name
     pub optout_codes: Arc<DashSet<String>>,
+    pub channel_log_dates_cache: Arc<ArcSwap<AvailableChannelLogs>>,
     pub db: Arc<clickhouse::Client>,
     pub config: Arc<Config>,
 }
@@ -116,5 +128,32 @@ impl App<'_> {
         }
 
         Ok(())
+    }
+
+    pub fn start_channel_log_dates_cacher(&self) {
+        let app = self.clone();
+
+        tokio::spawn(async move {
+            loop {
+                sleep(Duration::from_secs(
+                    app.config.channel_logs_date_cache_interval,
+                ))
+                .await;
+
+                let started_at = Instant::now();
+                match read_all_available_channel_logs(&app.db).await {
+                    Ok(new_dates) => {
+                        app.channel_log_dates_cache.store(Arc::new(new_dates));
+                        debug!(
+                            "Updated channel log dates cache (took {}ms)",
+                            started_at.elapsed().as_millis()
+                        );
+                    }
+                    Err(err) => {
+                        error!("Could not update available channel logs: {err}");
+                    }
+                }
+            }
+        });
     }
 }

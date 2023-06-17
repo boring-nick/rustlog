@@ -3,3 +3,4 @@
 config.json
 **node_modules/
 Dockerfile
+ch-data/

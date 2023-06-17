@@ -13,6 +13,7 @@ pub type ShutdownRx = watch::Receiver<()>;
 
 use anyhow::{anyhow, Context};
 use app::App;
+use arc_swap::ArcSwap;
 use args::{Args, Command};
 use clap::Parser;
 use config::Config;
@@ -37,6 +38,8 @@ use twitch_api2::{
     HelixClient,
 };
 use twitch_irc::login::StaticLoginCredentials;
+
+use crate::db::read_all_available_channel_logs;
 
 const SHUTDOWN_TIMEOUT_SECONDS: u64 = 8;
 
@@ -91,6 +94,11 @@ async fn run(config: Config, db: clickhouse::Client) -> anyhow::Result<()> {
     )
     .await?;
 
+    let channel_log_dates_cache = read_all_available_channel_logs(&db)
+        .await
+        .context("Could not fetch available log dates")?;
+    let channel_log_dates_cache = Arc::new(ArcSwap::new(Arc::new(channel_log_dates_cache)));
+
     let app = App {
         helix_client,
         token: Arc::new(token),
@@ -98,7 +106,10 @@ async fn run(config: Config, db: clickhouse::Client) -> anyhow::Result<()> {
         config: Arc::new(config),
         db: Arc::new(db),
         optout_codes: Arc::default(),
+        channel_log_dates_cache,
     };
+
+    app.start_channel_log_dates_cacher();
 
     let login_credentials = StaticLoginCredentials::anonymous();
     let mut bot_handle = tokio::spawn(bot::run(

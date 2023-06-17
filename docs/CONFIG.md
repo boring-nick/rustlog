@@ -8,6 +8,7 @@ Available options:
 - `clickhouseUsername` (string): Clickhouse username.
 - `clickhousePassword` (string): Clickhouse password.
 - `clickhouseFlushInterval` (number): Interval (in seconds) of how often messages should be flushed to the database. A lower value means that logs are available sooner at the expensive of higher database load. Defaults to 10.
+- `channelLogsDateCacheInterval` (number): Interval (in seconds) of how often the channel log dates cache should be updated. Defaults to 120.
 - `listenAddress` (string): Listening address for the web server. Defaults to `0.0.0.0:8025`.
 - `channels` (array of strings): List of channel ids to be logged.
 - `clientId` (string): Twitch client id.
