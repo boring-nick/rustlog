@@ -14,7 +14,7 @@ use tokio_stream::{wrappers::ReceiverStream, StreamExt};
 use tracing::{debug, error, info};
 
 const CHUNK_CAPACITY: usize = 750_000;
-const RETRY_COUNT: usize = 5;
+const RETRY_COUNT: usize = 20;
 const RETRY_INTERVAL_SECONDS: u64 = 5;
 
 lazy_static! {
