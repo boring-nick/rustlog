@@ -117,7 +117,7 @@ pub async fn run(app: App<'static>, mut shutdown_rx: ShutdownRx) {
         .route("/assets/*asset", get(frontend::static_asset))
         .finish_api(&mut api)
         .layer(Extension(Arc::new(api)))
-        .layer(Extension(app))
+        .with_state(app)
         .fallback(frontend::static_asset)
         .layer(cors);
     let app = NormalizePath::trim_trailing_slash(app);
