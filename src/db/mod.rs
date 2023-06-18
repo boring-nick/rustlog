@@ -191,8 +191,8 @@ pub async fn setup_db(db: &Client) -> Result<()> {
 CREATE TABLE IF NOT EXISTS message
 (
     channel_id LowCardinality(String),
-    user_id String,
-    timestamp DateTime64(3),
+    user_id String CODEC(ZSTD(3)),
+    timestamp DateTime64(3) CODEC (ZSTD(3)),
     raw String CODEC(ZSTD(3))
 )
 ENGINE = MergeTree
