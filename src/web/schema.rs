@@ -159,3 +159,11 @@ pub enum ChannelParam {
     Channel(String),
     ChannelId(String),
 }
+
+#[derive(Deserialize, JsonSchema)]
+pub struct UserLogPathParams {
+    #[serde(flatten)]
+    pub channel_id_type: ChannelIdType,
+    pub channel: String,
+    pub user: String,
+}

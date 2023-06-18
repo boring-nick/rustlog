@@ -2,7 +2,7 @@ use super::{
     responders::logs::LogsResponse,
     schema::{
         AvailableLogs, AvailableLogsParams, Channel, ChannelIdType, ChannelLogsPath, ChannelParam,
-        ChannelsList, LogsParams, LogsPathChannel, UserLogsPath, UserParam,
+        ChannelsList, LogsParams, LogsPathChannel, UserLogPathParams, UserLogsPath, UserParam,
     },
 };
 use crate::{
@@ -142,8 +142,8 @@ async fn get_user_logs(
 }
 
 pub async fn list_available_logs(
-    app: Extension<App<'_>>,
     Query(AvailableLogsParams { user, channel }): Query<AvailableLogsParams>,
+    app: Extension<App<'_>>,
 ) -> Result<Json<AvailableLogs>> {
     let channel_id = match channel {
         ChannelParam::ChannelId(id) => id,
@@ -192,21 +192,25 @@ pub async fn redirect_to_latest_channel_logs(
 }
 
 pub async fn redirect_to_latest_user_name_logs(
-    path: Path<(String, String, String)>,
+    path: Path<UserLogPathParams>,
     query: RawQuery,
 ) -> Redirect {
     redirect_to_latest_user_logs(path, query, "user")
 }
 
 pub async fn redirect_to_latest_user_id_logs(
-    path: Path<(String, String, String)>,
+    path: Path<UserLogPathParams>,
     query: RawQuery,
 ) -> Redirect {
     redirect_to_latest_user_logs(path, query, "userid")
 }
 
 fn redirect_to_latest_user_logs(
-    Path((channel_id_type, channel, user)): Path<(String, String, String)>,
+    Path(UserLogPathParams {
+        channel_id_type,
+        channel,
+        user,
+    }): Path<UserLogPathParams>,
     RawQuery(query): RawQuery,
     user_id_type: &str,
 ) -> Redirect {
@@ -224,7 +228,10 @@ fn redirect_to_latest_user_logs(
 
 pub async fn random_channel_line(
     app: Extension<App<'_>>,
-    Path((channel_id_type, channel)): Path<(ChannelIdType, String)>,
+    Path(LogsPathChannel {
+        channel_id_type,
+        channel,
+    }): Path<LogsPathChannel>,
     Query(logs_params): Query<LogsParams>,
 ) -> Result<LogsResponse> {
     let channel_id = match channel_id_type {
@@ -243,19 +250,27 @@ pub async fn random_channel_line(
 
 pub async fn random_user_line_by_name(
     app: Extension<App<'_>>,
-    Path((channel_id_type, channel, user_name)): Path<(ChannelIdType, String, String)>,
+    Path(UserLogPathParams {
+        channel_id_type,
+        channel,
+        user,
+    }): Path<UserLogPathParams>,
     query: Query<LogsParams>,
 ) -> Result<LogsResponse> {
-    let user_id = app.get_user_id_by_name(&user_name).await?;
+    let user_id = app.get_user_id_by_name(&user).await?;
     random_user_line(app, channel_id_type, channel, user_id, query).await
 }
 
 pub async fn random_user_line_by_id(
     app: Extension<App<'_>>,
-    Path((channel_id_type, channel, user_id)): Path<(ChannelIdType, String, String)>,
+    Path(UserLogPathParams {
+        channel_id_type,
+        channel,
+        user,
+    }): Path<UserLogPathParams>,
     query: Query<LogsParams>,
 ) -> Result<LogsResponse> {
-    random_user_line(app, channel_id_type, channel, user_id, query).await
+    random_user_line(app, channel_id_type, channel, user, query).await
 }
 
 async fn random_user_line(

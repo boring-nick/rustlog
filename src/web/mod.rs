@@ -27,8 +27,8 @@ pub async fn run(app: App<'static>, mut shutdown_rx: ShutdownRx) {
     aide::gen::on_error(|error| {
         panic!("Could not generate docs: {error}");
     });
-    aide::gen::extract_schemas(true);
     aide::gen::infer_responses(true);
+    aide::gen::extract_schemas(true);
 
     let listen_address =
         parse_listen_addr(&app.config.listen_address).expect("Invalid listen address");
@@ -38,8 +38,18 @@ pub async fn run(app: App<'static>, mut shutdown_rx: ShutdownRx) {
     let mut api = OpenApi::default();
 
     let app = ApiRouter::new()
-        .api_route("/channels", get(handlers::get_channels))
-        .api_route("/list", get(handlers::list_available_logs))
+        .api_route(
+            "/channels",
+            get_with(handlers::get_channels, |op| {
+                op.description("List logged channels")
+            }),
+        )
+        .api_route(
+            "/list",
+            get_with(handlers::list_available_logs, |op| {
+                op.description("List available logs")
+            }),
+        )
         .api_route(
             "/:channel_id_type/:channel",
             get_with(handlers::redirect_to_latest_channel_logs, |op| {
@@ -96,13 +106,13 @@ pub async fn run(app: App<'static>, mut shutdown_rx: ShutdownRx) {
             }),
         )
         .api_route("/optout", post(handlers::optout))
+        .route("/docs", Redoc::new("/openapi.json").axum_route())
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace_layer::make_span_with)
                 .on_response(trace_layer::on_response),
         )
         .route("/openapi.json", get(serve_openapi))
-        .route("/docs", Redoc::new("/openapi.json").axum_route())
         .route("/metrics", get(metrics))
         .route("/assets/*asset", get(frontend::static_asset))
         .finish_api(&mut api)
