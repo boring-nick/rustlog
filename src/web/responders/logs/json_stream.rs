@@ -1,11 +1,12 @@
 use crate::{
-    logs::{parse_messages, parse_raw, stream::LogsStream},
+    logs::{parse_messages, parse_raw, schema::message::ResponseMessage, stream::LogsStream},
     Result,
 };
 use futures::{stream::TryChunks, Future, Stream, StreamExt, TryStreamExt};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::{
     collections::VecDeque,
+    marker::PhantomData,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -17,24 +18,26 @@ const FOOTER: &str = r#"]}"#;
 const JSON_MESSAGE_SIZE: usize = 1024;
 const CHUNK_SIZE: usize = 3000;
 
-pub struct JsonLogsStream {
+pub struct JsonLogsStream<T> {
     inner: TryChunks<LogsStream>,
     is_start: bool,
     is_end: bool,
+    _message_type_marker: PhantomData<T>,
 }
 
-impl JsonLogsStream {
+impl<T> JsonLogsStream<T> {
     pub fn new(stream: LogsStream) -> Self {
         let inner = stream.try_chunks(CHUNK_SIZE);
         Self {
             inner,
             is_start: true,
             is_end: false,
+            _message_type_marker: PhantomData::default(),
         }
     }
 }
 
-impl Stream for JsonLogsStream {
+impl<T: for<'a> ResponseMessage<'a>> Stream for JsonLogsStream<T> {
     type Item = Result<Vec<u8>>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -49,7 +52,7 @@ impl Stream for JsonLogsStream {
             Poll::Ready(Some(result)) => match result {
                 Ok(chunk) => {
                     let irc_messages = parse_raw(chunk);
-                    let mut messages: VecDeque<_> = parse_messages(&irc_messages).collect();
+                    let mut messages: VecDeque<T> = parse_messages(&irc_messages).collect();
 
                     let mut buf = Vec::with_capacity(JSON_MESSAGE_SIZE * irc_messages.len());
 

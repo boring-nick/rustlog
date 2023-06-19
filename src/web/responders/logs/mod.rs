@@ -6,7 +6,7 @@ mod text_stream;
 use self::{
     json_stream::JsonLogsStream, ndjson_stream::NdJsonLogsStream, text_stream::TextLogsStream,
 };
-use crate::logs::{schema::Message, stream::LogsStream};
+use crate::logs::{schema::message::FullMessage, stream::LogsStream};
 use aide::OperationOutput;
 use axum::{
     body::StreamBody,
@@ -35,7 +35,7 @@ pub enum LogsResponseType {
 /// Used for schema only, actual serialization is manual
 #[derive(JsonSchema)]
 pub struct JsonLogsResponse<'a> {
-    pub messages: Vec<Message<'a>>,
+    pub messages: Vec<FullMessage<'a>>,
 }
 
 impl IntoResponse for LogsResponse {
@@ -54,8 +54,9 @@ impl IntoResponse for LogsResponse {
                 (set_content_type(&TEXT_PLAIN_UTF_8), StreamBody::new(stream)).into_response()
             }
             LogsResponseType::Json => {
-                let stream = JsonLogsStream::new(self.stream);
-                (set_content_type(&APPLICATION_JSON), StreamBody::new(stream)).into_response()
+                let stream = JsonLogsStream::<FullMessage>::new(self.stream);
+                StreamBody::new(stream).into_response()
+                // (set_content_type(&APPLICATION_JSON), StreamBody::new(stream)).into_response()
             }
             LogsResponseType::NdJson => {
                 let stream = NdJsonLogsStream::new(self.stream);
