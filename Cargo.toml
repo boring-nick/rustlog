@@ -8,8 +8,8 @@ aide = { version = "0.11.0", features = ["axum", "redoc"] }
 anyhow = "1.0.71"
 axum = "0.6.18"
 chrono = { version = "0.4.26", features = ["serde"] }
-clap = { version = "4.3.2", features = ["derive"] }
-clickhouse = { version = "0.11.4", default-features = false, features = [
+clap = { version = "4.3.4", features = ["derive"] }
+clickhouse = { version = "0.11.5", default-features = false, features = [
     "lz4",
 ] }
 dashmap = { version = "5.4.0", features = ["serde"] }
@@ -25,12 +25,12 @@ rayon = "1.7.0"
 reqwest = { version = "0.11.18", features = [
     "rustls-tls",
 ], default-features = false }
-rust-embed = { version = "6.6.1", features = ["interpolate-folder-path"] }
+rust-embed = { version = "6.7.0", features = ["interpolate-folder-path"] }
 schemars = "0.8.12"
-serde = { version = "1.0.163", features = ["derive"] }
-serde_json = { version = "1.0.96", features = ["preserve_order"] }
+serde = { version = "1.0.164", features = ["derive"] }
+serde_json = { version = "1.0.97", features = ["preserve_order"] }
 serde_repr = "0.1.12"
-strum = { version = "0.24.1", features = ["derive"] }
+strum = { version = "0.25.0", features = ["derive"] }
 thiserror = "1.0.40"
 tokio = { version = "1.28.2", features = ["sync", "signal", "rt-multi-thread"] }
 tokio-stream = "0.1.14"
