@@ -1,4 +1,4 @@
-use super::responders::logs::LogsResponseType;
+use super::responders::logs::{JsonResponseType, LogsResponseType};
 use crate::logs::schema::{ChannelLogDate, UserLogDate};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -77,9 +77,12 @@ pub struct LogsPathChannel {
 }
 
 #[derive(Deserialize, Debug, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct LogsParams {
     #[serde(default, deserialize_with = "deserialize_bool_param")]
     pub json: bool,
+    #[serde(default, deserialize_with = "deserialize_bool_param")]
+    pub json_basic: bool,
     #[serde(default, deserialize_with = "deserialize_bool_param")]
     pub raw: bool,
     #[serde(default, deserialize_with = "deserialize_bool_param")]
@@ -92,8 +95,10 @@ impl LogsParams {
     pub fn response_type(&self) -> LogsResponseType {
         if self.raw {
             LogsResponseType::Raw
+        } else if self.json_basic {
+            LogsResponseType::Json(JsonResponseType::Basic)
         } else if self.json {
-            LogsResponseType::Json
+            LogsResponseType::Json(JsonResponseType::Full)
         } else if self.ndjson {
             LogsResponseType::NdJson
         } else {

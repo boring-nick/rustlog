@@ -1,6 +1,6 @@
 use super::join_iter::JoinIter;
 use crate::{
-    logs::{parse_messages, parse_raw, stream::LogsStream},
+    logs::{parse_messages, parse_raw, schema::message::FullMessage, stream::LogsStream},
     Result,
 };
 use futures::{stream::TryChunks, Future, Stream, StreamExt, TryStreamExt};
@@ -35,7 +35,7 @@ impl Stream for TextLogsStream {
             item.map(|result| match result {
                 Ok(chunk) => {
                     let irc_messages = parse_raw(chunk);
-                    let messages: Vec<_> = parse_messages(&irc_messages).collect();
+                    let messages: Vec<FullMessage> = parse_messages(&irc_messages).collect();
 
                     let mut text = messages.iter().join('\n').to_string();
                     text.push('\n');

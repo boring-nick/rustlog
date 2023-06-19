@@ -1,5 +1,9 @@
 use crate::{
-    logs::{parse_messages, parse_raw, stream::LogsStream},
+    logs::{
+        parse_messages, parse_raw,
+        schema::message::{BasicMessage, ResponseMessage},
+        stream::LogsStream,
+    },
     Result,
 };
 use futures::{stream::TryChunks, Future, Stream, StreamExt, TryStreamExt};
@@ -36,7 +40,7 @@ impl Stream for NdJsonLogsStream {
             maybe_result.map(|result| match result {
                 Ok(chunk) => {
                     let irc_messages = parse_raw(chunk);
-                    let messages: Vec<_> = parse_messages(&irc_messages).collect();
+                    let messages: Vec<BasicMessage> = parse_messages(&irc_messages).collect();
 
                     let mut buf = Vec::with_capacity(JSON_MESSAGE_SIZE * messages.len());
 
