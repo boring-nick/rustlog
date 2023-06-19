@@ -1,12 +1,15 @@
 use crate::{
-    logs::{parse_messages, parse_raw, schema::message::ResponseMessage, stream::LogsStream},
+    logs::{
+        parse_messages, parse_raw,
+        schema::message::{BasicMessage, FullMessage, ResponseMessage},
+        stream::LogsStream,
+    },
     Result,
 };
 use futures::{stream::TryChunks, Future, Stream, StreamExt, TryStreamExt};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::{
     collections::VecDeque,
-    marker::PhantomData,
     pin::Pin,
     task::{Context, Poll},
 };
@@ -18,26 +21,67 @@ const FOOTER: &str = r#"]}"#;
 const JSON_MESSAGE_SIZE: usize = 1024;
 const CHUNK_SIZE: usize = 3000;
 
-pub struct JsonLogsStream<T> {
+pub enum JsonResponseType {
+    Basic,
+    Full,
+}
+
+pub struct JsonLogsStream {
     inner: TryChunks<LogsStream>,
     is_start: bool,
     is_end: bool,
-    _message_type_marker: PhantomData<T>,
+    response_type: JsonResponseType,
 }
 
-impl<T> JsonLogsStream<T> {
-    pub fn new(stream: LogsStream) -> Self {
+impl JsonLogsStream {
+    pub fn new(stream: LogsStream, response_type: JsonResponseType) -> Self {
         let inner = stream.try_chunks(CHUNK_SIZE);
         Self {
             inner,
             is_start: true,
             is_end: false,
-            _message_type_marker: PhantomData::default(),
+            response_type,
         }
+    }
+
+    fn serialize_chunk<'a, T: ResponseMessage<'a>>(
+        &mut self,
+        irc_messages: &'a [twitch::Message],
+    ) -> Vec<u8> {
+        let mut messages: VecDeque<T> = parse_messages(irc_messages).collect();
+
+        let mut buf = Vec::with_capacity(JSON_MESSAGE_SIZE * irc_messages.len());
+
+        if self.is_start {
+            buf.extend_from_slice(HEADER.as_bytes());
+            self.is_start = false;
+
+            if let Some(mut message) = messages.pop_front() {
+                message.unescape_tags();
+                serde_json::to_writer(&mut buf, &message).unwrap();
+            }
+        }
+
+        let serialized_messages: Vec<_> = messages
+            .into_par_iter()
+            .map(|mut message| {
+                message.unescape_tags();
+                let mut message_buf = Vec::with_capacity(JSON_MESSAGE_SIZE);
+                serde_json::to_writer(&mut message_buf, &message).unwrap();
+                message_buf
+            })
+            .collect();
+
+        for message_buf in serialized_messages {
+            buf.push(b',');
+            buf.extend(message_buf);
+        }
+
+        buf
     }
 }
 
-impl<T: for<'a> ResponseMessage<'a>> Stream for JsonLogsStream<T> {
+impl Stream for JsonLogsStream {
     type Item = Result<Vec<u8>>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -52,34 +96,14 @@ impl<T: for<'a> ResponseMessage<'a>> Stream for JsonLogsStream<T> {
             Poll::Ready(Some(result)) => match result {
                 Ok(chunk) => {
                     let irc_messages = parse_raw(chunk);
-                    let mut messages: VecDeque<T> = parse_messages(&irc_messages).collect();
-
-                    let mut buf = Vec::with_capacity(JSON_MESSAGE_SIZE * irc_messages.len());
-
-                    if self.is_start {
-                        buf.extend_from_slice(HEADER.as_bytes());
-                        self.is_start = false;
-
-                        if let Some(mut message) = messages.pop_front() {
-                            message.unescape_tags();
-                            serde_json::to_writer(&mut buf, &message).unwrap();
+                    let buf = match self.response_type {
+                        JsonResponseType::Basic => {
+                            self.serialize_chunk::<BasicMessage>(&irc_messages)
                         }
-                    }
-
-                    let serialized_messages: Vec<_> = messages
-                        .into_par_iter()
-                        .map(|mut message| {
-                            message.unescape_tags();
-                            let mut message_buf = Vec::with_capacity(JSON_MESSAGE_SIZE);
-                            serde_json::to_writer(&mut message_buf, &message).unwrap();
-                            message_buf
-                        })
-                        .collect();
-
-                    for message_buf in serialized_messages {
-                        buf.push(b',');
-                        buf.extend(message_buf);
-                    }
+                        JsonResponseType::Full => {
+                            self.serialize_chunk::<FullMessage>(&irc_messages)
+                        }
+                    };
 
                     Poll::Ready(Some(Ok(buf)))
                 }

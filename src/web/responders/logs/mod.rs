@@ -3,6 +3,8 @@ mod json_stream;
 mod ndjson_stream;
 mod text_stream;
 
+pub use json_stream::JsonResponseType;
+
 use self::{
     json_stream::JsonLogsStream, ndjson_stream::NdJsonLogsStream, text_stream::TextLogsStream,
 };
@@ -28,7 +30,7 @@ pub struct LogsResponse {
 pub enum LogsResponseType {
     Raw,
     Text,
-    Json,
+    Json(JsonResponseType),
     NdJson,
 }
 
@@ -53,10 +55,9 @@ impl IntoResponse for LogsResponse {
                 let stream = TextLogsStream::new(self.stream);
                 (set_content_type(&TEXT_PLAIN_UTF_8), StreamBody::new(stream)).into_response()
             }
-            LogsResponseType::Json => {
-                let stream = JsonLogsStream::<FullMessage>::new(self.stream);
-                StreamBody::new(stream).into_response()
-                // (set_content_type(&APPLICATION_JSON), StreamBody::new(stream)).into_response()
+            LogsResponseType::Json(response_type) => {
+                let stream = JsonLogsStream::new(self.stream, response_type);
+                (set_content_type(&APPLICATION_JSON), StreamBody::new(stream)).into_response()
             }
             LogsResponseType::NdJson => {
                 let stream = NdJsonLogsStream::new(self.stream);
