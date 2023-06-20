@@ -4,18 +4,23 @@ use self::reader::{LogsReader, COMPRESSED_CHANNEL_FILE, UNCOMPRESSED_CHANNEL_FIL
 use crate::{
     db::schema::{Message, MESSAGES_TABLE},
     logs::extract::{extract_raw_timestamp, extract_user_id},
+    migrator::reader::ChannelLogDateMap,
 };
 use anyhow::{anyhow, Context};
 use chrono::{DateTime, Datelike, TimeZone, Utc};
 use clickhouse::inserter::Inserter;
 use flate2::bufread::GzDecoder;
+use indexmap::IndexMap;
 use std::{
     borrow::Cow,
     convert::TryInto,
     fs::File,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
     time::{Duration, Instant},
 };
 use tokio::sync::Semaphore;
@@ -60,21 +65,31 @@ impl Migrator {
 
         info!("Migrating channels {filtered_channels:?}");
 
+        let mut channel_logs: IndexMap<String, ChannelLogDateMap> = IndexMap::new();
+
+        info!("Checking available logs");
+
+        let mut total_bytes = 0;
+
+        for channel_id in filtered_channels {
+            let (available_logs, channel_bytes) =
+                source_logs.get_available_channel_logs(&channel_id)?;
+            total_bytes += channel_bytes;
+            channel_logs.insert(channel_id, available_logs);
+        }
+
+        let channel_count = channel_logs.len();
+        let total_mb = total_bytes / 1024 / 1024;
+
+        info!("Migrating {channel_count} channels with {total_mb} MiB of logs");
+        info!("NOTE: the estimation numbers will be wrong if you use gzip compressed logs");
+
         let mut i = 1;
 
-        for channel_id in &filtered_channels {
-            let channel_started_at = Instant::now();
-            info!(
-                "Reading channel {channel_id} ({i}/{})",
-                filtered_channels.len()
-            );
+        let total_read_bytes = Arc::new(AtomicU64::new(0));
 
-            let available_logs = source_logs.get_available_channel_logs(channel_id, true)?;
-
-            debug!(
-                "Reading available logs took {:?}",
-                channel_started_at.elapsed()
-            );
+        for (channel_id, available_logs) in channel_logs {
+            info!("Reading channel {channel_id} ({i}/{channel_count})");
 
             for (year, months) in available_logs {
                 for (month, days) in months {
@@ -83,10 +98,9 @@ impl Migrator {
                     let migrator = self.clone();
                     let channel_id = channel_id.clone();
                     let root_path = source_logs.root_path.clone();
+                    let total_read_bytes = total_read_bytes.clone();
 
                     let handle = tokio::spawn(async move {
-                        let mut read_bytes = 0;
-
                         let mut inserter = migrator
                             .db
                             .inserter(MESSAGES_TABLE)?
@@ -105,9 +119,11 @@ impl Migrator {
                                 "Migrating channel {channel_id} date {date}",
                                 date = date.format("%Y-%m-%d")
                             );
-                            read_bytes += migrator
+                            let day_bytes = migrator
                                 .migrate_day(&root_path, &channel_id, date, &mut inserter)
                                 .await?;
+
+                            total_read_bytes.fetch_add(day_bytes as u64, Ordering::SeqCst);
                         }
 
                         debug!("Flushing messages");
@@ -119,8 +135,18 @@ impl Migrator {
                             );
                         }
 
+                        let processed_bytes = total_read_bytes.load(Ordering::SeqCst);
+                        let processed_mb = processed_bytes / 1024 / 1024;
+
+                        info!(
+                            "Progress estimation: {}/{} MiB ({:.1}%)",
+                            processed_mb,
+                            total_mb,
+                            (processed_bytes as f64 / total_bytes as f64 * 100.0).round()
+                        );
+
                         drop(permit);
-                        Result::<_, anyhow::Error>::Ok(read_bytes)
+                        Result::<_, anyhow::Error>::Ok(())
                     });
                     handles.push(handle);
                 }
@@ -128,15 +154,15 @@ impl Migrator {
             i += 1;
         }
 
-        let mut total_read_bytes = 0;
         for handle in handles {
-            total_read_bytes += handle.await.unwrap()?;
+            handle.await.unwrap()?;
         }
 
         let elapsed = started_at.elapsed();
         info!("Migration finished in {elapsed:?}");
 
-        let throughput = (total_read_bytes / 1024 / 1024) as u64 / (elapsed.as_secs());
+        let throughput =
+            (total_read_bytes.load(Ordering::SeqCst) / 1024 / 1024) / (elapsed.as_secs());
         info!("Average migration speed: {throughput} MiB/s");
 
         Ok(())

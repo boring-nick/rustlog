@@ -1,5 +1,4 @@
 use crate::{error::Error, Result};
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use std::{
     collections::BTreeMap,
     fs::{self, read_dir},
@@ -11,7 +10,7 @@ use tracing::debug;
 pub const COMPRESSED_CHANNEL_FILE: &str = "channel.txt.gz";
 pub const UNCOMPRESSED_CHANNEL_FILE: &str = "channel.txt";
 
-type ChannelLogDateMap = BTreeMap<u32, BTreeMap<u32, Vec<u32>>>;
+pub type ChannelLogDateMap = BTreeMap<u32, BTreeMap<u32, Vec<u32>>>;
 
 #[derive(Debug, Clone)]
 pub struct LogsReader {
@@ -49,11 +48,7 @@ impl LogsReader {
         Ok(channels)
     }
 
-    pub fn get_available_channel_logs(
-        &self,
-        channel_id: &str,
-        include_compressed: bool,
-    ) -> Result<ChannelLogDateMap> {
+    pub fn get_available_channel_logs(&self, channel_id: &str) -> Result<(ChannelLogDateMap, u64)> {
         debug!("Getting logs for channel {channel_id}");
         let channel_path = self.root_path.join(channel_id);
         if !channel_path.exists() {
@@ -63,6 +58,7 @@ impl LogsReader {
         let channel_dir = read_dir(channel_path)?;
 
         let mut years = BTreeMap::new();
+        let mut total_size = 0;
 
         for year_entry in channel_dir {
             let year_entry = year_entry?;
@@ -79,7 +75,7 @@ impl LogsReader {
 
                         let mut days: Vec<u32> = month_dir
                             .collect::<Vec<_>>()
-                            .into_par_iter()
+                            .into_iter()
                             .filter_map(|day_entry| {
                                 let day_entry = day_entry.expect("Could not read day");
 
@@ -95,20 +91,17 @@ impl LogsReader {
                                         .and_then(|name| name.parse().ok())
                                         .expect("invalid log entry day name");
 
+                                    let compressed_channel_file_path =
+                                        day_entry.path().join(COMPRESSED_CHANNEL_FILE);
                                     let uncompressed_channel_file_path =
                                         day_entry.path().join(UNCOMPRESSED_CHANNEL_FILE);
 
-                                    if fs::metadata(uncompressed_channel_file_path)
-                                        .map_or(false, |metadata| metadata.is_file())
+                                    if let Ok(metadata) =
+                                        fs::metadata(uncompressed_channel_file_path)
+                                            .or_else(|_| fs::metadata(compressed_channel_file_path))
                                     {
-                                        return Some(day);
-                                    } else if include_compressed {
-                                        let compressed_channel_file_path =
-                                            day_entry.path().join(COMPRESSED_CHANNEL_FILE);
-
-                                        if fs::metadata(compressed_channel_file_path)
-                                            .map_or(false, |metadata| metadata.is_file())
-                                        {
+                                        if metadata.is_file() {
+                                            total_size += metadata.len();
                                             return Some(day);
                                         }
                                     }
@@ -139,6 +132,6 @@ impl LogsReader {
             }
         }
 
-        Ok(years)
+        Ok((years, total_size))
     }
 }
