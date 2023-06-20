@@ -87,6 +87,7 @@ impl Migrator {
         let mut i = 1;
 
         let total_read_bytes = Arc::new(AtomicU64::new(0));
+        let migrated_percentage = Arc::new(AtomicU64::new(0));
 
         for (channel_id, available_logs) in channel_logs {
             info!("Reading channel {channel_id} ({i}/{channel_count})");
@@ -99,6 +100,7 @@ impl Migrator {
                     let channel_id = channel_id.clone();
                     let root_path = source_logs.root_path.clone();
                     let total_read_bytes = total_read_bytes.clone();
+                    let migrated_percentage = migrated_percentage.clone();
 
                     let handle = tokio::spawn(async move {
                         let mut inserter = migrator
@@ -124,6 +126,19 @@ impl Migrator {
                                 .await?;
 
                             total_read_bytes.fetch_add(day_bytes as u64, Ordering::SeqCst);
+                            let processed_bytes = total_read_bytes.load(Ordering::SeqCst);
+
+                            let old_percentage = migrated_percentage.load(Ordering::SeqCst);
+                            let new_percentage =
+                                (processed_bytes as f64 / total_bytes as f64 * 100.0) as u64;
+
+                            if new_percentage - old_percentage >= 1 {
+                                let processed_mb = processed_bytes / 1024 / 1024;
+                                info!(
+                                    "Progress estimation: {processed_mb}/{total_mb} MiB ({new_percentage}%)",
+                                );
+                                migrated_percentage.store(new_percentage, Ordering::SeqCst);
+                            }
                         }
 
                         debug!("Flushing messages");
@@ -134,16 +149,6 @@ impl Migrator {
                                 stats.entries, stats.transactions,
                             );
                         }
-
-                        let processed_bytes = total_read_bytes.load(Ordering::SeqCst);
-                        let processed_mb = processed_bytes / 1024 / 1024;
-
-                        info!(
-                            "Progress estimation: {}/{} MiB ({:.1}%)",
-                            processed_mb,
-                            total_mb,
-                            (processed_bytes as f64 / total_bytes as f64 * 100.0).round()
-                        );
 
                         drop(permit);
                         Result::<_, anyhow::Error>::Ok(())
