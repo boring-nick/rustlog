@@ -8,14 +8,17 @@ use anyhow::{anyhow, Context};
 use chrono::Utc;
 use lazy_static::lazy_static;
 use prometheus::{register_int_counter_vec, IntCounterVec};
-use std::borrow::Cow;
-use tokio::sync::mpsc::Sender;
+use std::{borrow::Cow, time::Duration};
+use tokio::{sync::mpsc::Sender, time::sleep};
 use tracing::{debug, error, info, trace};
 use twitch_irc::{
     login::LoginCredentials,
     message::{AsRawIRC, IRCMessage, ServerMessage},
     ClientConfig, SecureTCPTransport, TwitchIRCClient,
 };
+
+const CHANNEL_REJOIN_INTERVAL_SECONDS: u64 = 3600;
+const CHANENLS_REFETCH_RETRY_INTERVAL_SECONDS: u64 = 5;
 
 type TwitchClient<C> = TwitchIRCClient<SecureTCPTransport, C>;
 
@@ -32,7 +35,7 @@ const COMMAND_PREFIX: &str = "!rustlog ";
 
 pub async fn run<C: LoginCredentials>(
     login_credentials: C,
-    app: App<'_>,
+    app: App<'static>,
     writer_tx: Sender<Message<'static>>,
     shutdown_rx: ShutdownRx,
 ) {
@@ -40,13 +43,13 @@ pub async fn run<C: LoginCredentials>(
     bot.run(login_credentials, shutdown_rx).await;
 }
 
-struct Bot<'a> {
-    app: App<'a>,
+struct Bot {
+    app: App<'static>,
     writer_tx: Sender<Message<'static>>,
 }
 
-impl<'a> Bot<'a> {
-    pub fn new(app: App<'a>, writer_tx: Sender<Message<'static>>) -> Bot<'a> {
+impl Bot {
+    pub fn new(app: App<'static>, writer_tx: Sender<Message<'static>>) -> Bot {
         Self { app, writer_tx }
     }
 
@@ -54,36 +57,43 @@ impl<'a> Bot<'a> {
         let client_config = ClientConfig::new_simple(login_credentials);
         let (mut receiver, client) = TwitchIRCClient::<SecureTCPTransport, C>::new(client_config);
 
-        let channel_ids = self.app.config.channels.read().unwrap().clone();
+        let app = self.app.clone();
+        let join_client = client.clone();
+        tokio::spawn(async move {
+            loop {
+                let channel_ids = app.config.channels.read().unwrap().clone();
 
-        match self
-            .app
-            .get_users(Vec::from_iter(channel_ids), vec![])
-            .await
-        {
-            Ok(users) => {
-                info!("Joining {} channels", users.len());
-                for channel_login in users.into_values() {
-                    info!("Logging channel {channel_login}");
-                    client.join(channel_login).expect("Failed to join channel");
-                }
+                let interval = match app.get_users(Vec::from_iter(channel_ids), vec![]).await {
+                    Ok(users) => {
+                        info!("Joining {} channels", users.len());
+                        for channel_login in users.into_values() {
+                            debug!("Logging channel {channel_login}");
+                            join_client
+                                .join(channel_login)
+                                .expect("Failed to join channel");
+                        }
+                        CHANNEL_REJOIN_INTERVAL_SECONDS
+                    }
+                    Err(err) => {
+                        error!("Could not fetch users list: {err}");
+                        CHANENLS_REFETCH_RETRY_INTERVAL_SECONDS
+                    }
+                };
+                sleep(Duration::from_secs(interval)).await;
+            }
+        });
 
-                loop {
-                    tokio::select! {
-                        Some(msg) = receiver.recv() => {
-                            if let Err(e) = self.handle_message(msg, &client).await {
-                                error!("Could not handle message: {e}");
-                            }
-                        }
-                        _ = shutdown_rx.changed() => {
-                            debug!("Shutting down bot task");
-                            break;
-                        }
+        loop {
+            tokio::select! {
+                Some(msg) = receiver.recv() => {
+                    if let Err(e) = self.handle_message(msg, &client).await {
+                        error!("Could not handle message: {e}");
                     }
                 }
-            }
-            Err(err) => {
-                error!("Could not fetch channel list: {err}");
+                _ = shutdown_rx.changed() => {
+                    debug!("Shutting down bot task");
+                    break;
+                }
             }
         }
     }
