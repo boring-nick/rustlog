@@ -1,8 +1,6 @@
 pub mod schema;
 pub mod writer;
 
-use std::collections::HashMap;
-
 use crate::{
     error::Error,
     logs::{
@@ -16,8 +14,6 @@ use chrono::{Datelike, NaiveDateTime};
 use clickhouse::Client;
 use rand::{seq::IteratorRandom, thread_rng};
 use tracing::info;
-
-pub type AvailableChannelLogs = HashMap<String, Vec<AvailableLogDate>>;
 
 pub async fn read_channel(
     db: &Client,
@@ -56,27 +52,32 @@ pub async fn read_user(
     LogsStream::new_cursor(cursor).await
 }
 
-pub async fn read_all_available_channel_logs(db: &Client) -> Result<AvailableChannelLogs> {
-    let all_dates = db
-        .query("SELECT channel_id, toDateTime(toStartOfDay(timestamp)) AS date FROM message GROUP BY date, channel_id ORDER BY date DESC")
-        .fetch_all::<(String, i32)>().await?;
+pub async fn read_available_channel_logs(
+    db: &Client,
+    channel_id: &str,
+) -> Result<Vec<AvailableLogDate>> {
+    let timestamps: Vec<i32> = db
+        .query(
+            "SELECT toDateTime(toStartOfDay(timestamp)) AS date FROM message WHERE channel_id = ? GROUP BY date ORDER BY date DESC",
+        )
+        .bind(channel_id)
+        .fetch_all().await?;
 
-    let mut channels: AvailableChannelLogs = HashMap::new();
+    let dates = timestamps
+        .into_iter()
+        .map(|timestamp| {
+            let naive =
+                NaiveDateTime::from_timestamp_opt(timestamp.into(), 0).expect("Invalid DateTime");
 
-    for (channel_id, timestamp) in all_dates {
-        let naive =
-            NaiveDateTime::from_timestamp_opt(timestamp.into(), 0).expect("Invalid DateTime");
+            AvailableLogDate {
+                year: naive.year().to_string(),
+                month: naive.month().to_string(),
+                day: Some(naive.day().to_string()),
+            }
+        })
+        .collect();
 
-        let available_log = AvailableLogDate {
-            year: naive.year().to_string(),
-            month: naive.month().to_string(),
-            day: Some(naive.day().to_string()),
-        };
-
-        channels.entry(channel_id).or_default().push(available_log);
-    }
-
-    Ok(channels)
+    Ok(dates)
 }
 
 pub async fn read_available_user_logs(

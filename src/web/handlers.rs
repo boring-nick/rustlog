@@ -8,8 +8,8 @@ use super::{
 use crate::{
     app::App,
     db::{
-        read_available_user_logs, read_channel, read_random_channel_line, read_random_user_line,
-        read_user,
+        read_available_channel_logs, read_available_user_logs, read_channel,
+        read_random_channel_line, read_random_user_line, read_user,
     },
     error::Error,
     logs::{
@@ -159,8 +159,7 @@ pub async fn list_available_logs(
         read_available_user_logs(&app.db, &channel_id, &user_id).await?
     } else {
         app.check_opted_out(&channel_id, None)?;
-        let cache = app.channel_log_dates_cache.load();
-        cache.get(&channel_id).cloned().ok_or(Error::NotFound)?
+        read_available_channel_logs(&app.db, &channel_id).await?
     };
 
     if !available_logs.is_empty() {

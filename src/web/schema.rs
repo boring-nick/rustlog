@@ -135,7 +135,7 @@ pub struct AvailableLogs {
     pub available_logs: Vec<AvailableLogDate>,
 }
 
-#[derive(Serialize, JsonSchema, Clone)]
+#[derive(Serialize, JsonSchema)]
 pub struct AvailableLogDate {
     pub year: String,
     pub month: String,
