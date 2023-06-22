@@ -1,5 +1,8 @@
+mod migrations;
 pub mod schema;
 pub mod writer;
+
+pub use migrations::run as setup_db;
 
 use crate::{
     error::Error,
@@ -183,24 +186,5 @@ pub async fn delete_user_logs(db: &Client, user_id: &str) -> Result<()> {
         .bind(user_id)
         .execute()
         .await?;
-    Ok(())
-}
-
-pub async fn setup_db(db: &Client) -> Result<()> {
-    db.query(
-        "
-CREATE TABLE IF NOT EXISTS message
-(
-    channel_id LowCardinality(String),
-    user_id String CODEC(ZSTD(5)),
-    timestamp DateTime64(3) CODEC (DoubleDelta, ZSTD(5)),
-    raw String CODEC(ZSTD(5))
-)
-ENGINE = MergeTree
-PARTITION BY toYYYYMM(timestamp)
-ORDER BY (channel_id, user_id, timestamp)",
-    )
-    .execute()
-    .await?;
     Ok(())
 }
