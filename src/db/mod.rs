@@ -58,7 +58,7 @@ pub async fn read_available_channel_logs(
 ) -> Result<Vec<AvailableLogDate>> {
     let timestamps: Vec<i32> = db
         .query(
-            "SELECT toDateTime(toStartOfDay(timestamp)) AS date FROM message WHERE channel_id = ? GROUP BY date ORDER BY date DESC",
+            "SELECT DISTINCT toDateTime(toStartOfDay(timestamp)) AS date FROM message WHERE channel_id = ? ORDER BY date DESC",
         )
         .bind(channel_id)
         .fetch_all().await?;
@@ -86,7 +86,7 @@ pub async fn read_available_user_logs(
     user_id: &str,
 ) -> Result<Vec<AvailableLogDate>> {
     let timestamps: Vec<i32> = db
-        .query("SELECT toDateTime(toStartOfMonth(timestamp)) AS date FROM message WHERE channel_id = ? AND user_id = ? GROUP BY date ORDER BY date DESC")
+        .query("SELECT DISTINCT toDateTime(toStartOfMonth(timestamp)) AS date FROM message WHERE channel_id = ? AND user_id = ? ORDER BY date DESC")
         .bind(channel_id)
         .bind(user_id)
         .fetch_all().await?;
