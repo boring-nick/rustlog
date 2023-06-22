@@ -34,7 +34,7 @@ ADD PROJECTION channel_log_dates
 
     run_migration(
         db,
-        "3_materialize_channel_log_dates_prokection",
+        "3_materialize_channel_log_dates_projection",
         "
 ALTER TABLE message
 MATERIALIZE PROJECTION channel_log_dates",
