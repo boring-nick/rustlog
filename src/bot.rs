@@ -35,7 +35,7 @@ const COMMAND_PREFIX: &str = "!rustlog ";
 
 pub async fn run<C: LoginCredentials>(
     login_credentials: C,
-    app: App<'static>,
+    app: App,
     writer_tx: Sender<Message<'static>>,
     shutdown_rx: ShutdownRx,
 ) {
@@ -44,12 +44,12 @@ pub async fn run<C: LoginCredentials>(
 }
 
 struct Bot {
-    app: App<'static>,
+    app: App,
     writer_tx: Sender<Message<'static>>,
 }
 
 impl Bot {
-    pub fn new(app: App<'static>, writer_tx: Sender<Message<'static>>) -> Bot {
+    pub fn new(app: App, writer_tx: Sender<Message<'static>>) -> Bot {
         Self { app, writer_tx }
     }
 

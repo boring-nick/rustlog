@@ -20,8 +20,8 @@ use tracing::{debug, error};
 use twitch_api2::{helix::users::GetUsersRequest, twitch_oauth2::AppAccessToken, HelixClient};
 
 #[derive(Clone)]
-pub struct App<'a> {
-    pub helix_client: HelixClient<'a, reqwest::Client>,
+pub struct App {
+    pub helix_client: HelixClient<'static, reqwest::Client>,
     pub token: Arc<AppAccessToken>,
     pub users: UsersCache,
     pub optout_codes: Arc<DashSet<String>>,
@@ -30,7 +30,7 @@ pub struct App<'a> {
     pub config: Arc<Config>,
 }
 
-impl App<'_> {
+impl App {
     pub async fn get_users(
         &self,
         ids: Vec<String>,

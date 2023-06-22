@@ -23,7 +23,7 @@ use std::{
 use tower_http::{cors::CorsLayer, normalize_path::NormalizePath, trace::TraceLayer};
 use tracing::{debug, info};
 
-pub async fn run(app: App<'static>, mut shutdown_rx: ShutdownRx) {
+pub async fn run(app: App, mut shutdown_rx: ShutdownRx) {
     aide::gen::on_error(|error| {
         panic!("Could not generate docs: {error}");
     });

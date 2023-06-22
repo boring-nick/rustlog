@@ -28,7 +28,7 @@ use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::time::Duration;
 use tracing::debug;
 
-pub async fn get_channels(app: State<App<'_>>) -> Json<ChannelsList> {
+pub async fn get_channels(app: State<App>) -> Json<ChannelsList> {
     let channel_ids = app.config.channels.read().unwrap().clone();
 
     let channels = app
@@ -45,7 +45,7 @@ pub async fn get_channels(app: State<App<'_>>) -> Json<ChannelsList> {
 }
 
 pub async fn get_channel_logs(
-    app: State<App<'_>>,
+    app: State<App>,
     Path(channel_log_params): Path<ChannelLogsPath>,
     Query(logs_params): Query<LogsParams>,
 ) -> Result<LogsResponse> {
@@ -78,7 +78,7 @@ pub async fn get_channel_logs(
 }
 
 pub async fn get_user_logs_by_name(
-    app: State<App<'_>>,
+    app: State<App>,
     path: Path<UserLogsPath>,
     params: Query<LogsParams>,
 ) -> Result<LogsResponse> {
@@ -94,7 +94,7 @@ pub async fn get_user_logs_by_name(
 }
 
 pub async fn get_user_logs_by_id(
-    app: State<App<'_>>,
+    app: State<App>,
     path: Path<UserLogsPath>,
     params: Query<LogsParams>,
 ) -> Result<LogsResponse> {
@@ -103,7 +103,7 @@ pub async fn get_user_logs_by_id(
 }
 
 async fn get_user_logs(
-    app: State<App<'_>>,
+    app: State<App>,
     Path(user_logs_path): Path<UserLogsPath>,
     Query(logs_params): Query<LogsParams>,
     user_id: String,
@@ -143,7 +143,7 @@ async fn get_user_logs(
 
 pub async fn list_available_logs(
     Query(AvailableLogsParams { user, channel }): Query<AvailableLogsParams>,
-    app: State<App<'_>>,
+    app: State<App>,
 ) -> Result<Json<AvailableLogs>> {
     let channel_id = match channel {
         ChannelParam::ChannelId(id) => id,
@@ -227,7 +227,7 @@ fn redirect_to_latest_user_logs(
 }
 
 pub async fn random_channel_line(
-    app: State<App<'_>>,
+    app: State<App>,
     Path(LogsPathChannel {
         channel_id_type,
         channel,
@@ -249,7 +249,7 @@ pub async fn random_channel_line(
 }
 
 pub async fn random_user_line_by_name(
-    app: State<App<'_>>,
+    app: State<App>,
     Path(UserLogPathParams {
         channel_id_type,
         channel,
@@ -262,7 +262,7 @@ pub async fn random_user_line_by_name(
 }
 
 pub async fn random_user_line_by_id(
-    app: State<App<'_>>,
+    app: State<App>,
     Path(UserLogPathParams {
         channel_id_type,
         channel,
@@ -274,7 +274,7 @@ pub async fn random_user_line_by_id(
 }
 
 async fn random_user_line(
-    app: State<App<'_>>,
+    app: State<App>,
     channel_id_type: ChannelIdType,
     channel: String,
     user_id: String,
@@ -294,7 +294,7 @@ async fn random_user_line(
     })
 }
 
-pub async fn optout(app: State<App<'_>>) -> Json<String> {
+pub async fn optout(app: State<App>) -> Json<String> {
     let mut rng = thread_rng();
     let optout_code: String = (0..5).map(|_| rng.sample(Alphanumeric) as char).collect();
 
