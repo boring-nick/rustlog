@@ -25,6 +25,8 @@ pub struct Config {
     pub admins: Vec<String>,
     #[serde(default)]
     pub opt_out: DashMap<String, bool>,
+    #[serde(rename = "adminAPIKey")]
+    pub admin_api_key: Option<String>,
 }
 
 impl Config {

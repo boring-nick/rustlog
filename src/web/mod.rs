@@ -1,29 +1,31 @@
+mod admin;
 mod frontend;
 mod handlers;
 mod responders;
 pub mod schema;
 mod trace_layer;
 
-use crate::{app::App, ShutdownRx};
+use crate::{app::App, bot::BotMessage, web::admin::admin_auth, ShutdownRx};
 use aide::{
     axum::{
-        routing::{get, get_with, post},
+        routing::{get, get_with, post, post_with},
         ApiRouter, IntoApiResponse,
     },
     openapi::OpenApi,
     redoc::Redoc,
 };
-use axum::{response::IntoResponse, Extension, Json, ServiceExt};
+use axum::{middleware, response::IntoResponse, Extension, Json, ServiceExt};
 use prometheus::TextEncoder;
 use std::{
     net::{AddrParseError, SocketAddr},
     str::FromStr,
     sync::Arc,
 };
+use tokio::sync::mpsc::Sender;
 use tower_http::{cors::CorsLayer, normalize_path::NormalizePath, trace::TraceLayer};
 use tracing::{debug, info};
 
-pub async fn run(app: App, mut shutdown_rx: ShutdownRx) {
+pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessage>) {
     aide::gen::on_error(|error| {
         panic!("Could not generate docs: {error}");
     });
@@ -37,7 +39,21 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx) {
 
     let mut api = OpenApi::default();
 
+    let admin_routes = ApiRouter::new()
+        .api_route(
+            "/channels",
+            post_with(admin::add_channels, |op| {
+                op.tag("Admin").description("Join the specified channels")
+            })
+            .delete_with(admin::remove_channels, |op| {
+                op.tag("Admin").description("Leave the specified channels")
+            }),
+        )
+        .route_layer(middleware::from_fn_with_state(app.clone(), admin_auth))
+        .layer(Extension(bot_tx));
+
     let app = ApiRouter::new()
+        .nest("/admin", admin_routes)
         .api_route(
             "/channels",
             get_with(handlers::get_channels, |op| {

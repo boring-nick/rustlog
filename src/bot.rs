@@ -9,7 +9,10 @@ use chrono::Utc;
 use lazy_static::lazy_static;
 use prometheus::{register_int_counter_vec, IntCounterVec};
 use std::{borrow::Cow, time::Duration};
-use tokio::{sync::mpsc::Sender, time::sleep};
+use tokio::{
+    sync::mpsc::{Receiver, Sender},
+    time::sleep,
+};
 use tracing::{debug, error, info, trace};
 use twitch_irc::{
     login::LoginCredentials,
@@ -21,6 +24,12 @@ const CHANNEL_REJOIN_INTERVAL_SECONDS: u64 = 3600;
 const CHANENLS_REFETCH_RETRY_INTERVAL_SECONDS: u64 = 5;
 
 type TwitchClient<C> = TwitchIRCClient<SecureTCPTransport, C>;
+
+#[derive(Debug)]
+pub enum BotMessage {
+    JoinChannels(Vec<String>),
+    PartChannels(Vec<String>),
+}
 
 lazy_static! {
     static ref MESSAGES_RECEIVED_COUNTERS: IntCounterVec = register_int_counter_vec!(
@@ -38,11 +47,13 @@ pub async fn run<C: LoginCredentials>(
     app: App,
     writer_tx: Sender<Message<'static>>,
     shutdown_rx: ShutdownRx,
+    command_rx: Receiver<BotMessage>,
 ) {
     let bot = Bot::new(app, writer_tx);
-    bot.run(login_credentials, shutdown_rx).await;
+    bot.run(login_credentials, shutdown_rx, command_rx).await;
 }
 
+#[derive(Clone)]
 struct Bot {
     app: App,
     writer_tx: Sender<Message<'static>>,
@@ -53,7 +64,12 @@ impl Bot {
         Self { app, writer_tx }
     }
 
-    pub async fn run<C: LoginCredentials>(self, login_credentials: C, mut shutdown_rx: ShutdownRx) {
+    pub async fn run<C: LoginCredentials>(
+        self,
+        login_credentials: C,
+        mut shutdown_rx: ShutdownRx,
+        mut command_rx: Receiver<BotMessage>,
+    ) {
         let client_config = ClientConfig::new_simple(login_credentials);
         let (mut receiver, client) = TwitchIRCClient::<SecureTCPTransport, C>::new(client_config);
 
@@ -80,6 +96,39 @@ impl Bot {
                     }
                 };
                 sleep(Duration::from_secs(interval)).await;
+            }
+        });
+
+        let bot = self.clone();
+        let msg_client = client.clone();
+        tokio::spawn(async move {
+            while let Some(msg) = command_rx.recv().await {
+                match msg {
+                    BotMessage::JoinChannels(channels) => {
+                        if let Err(err) = bot
+                            .update_channels(
+                                &msg_client,
+                                &channels.iter().map(String::as_str).collect::<Vec<_>>(),
+                                ChannelAction::Join,
+                            )
+                            .await
+                        {
+                            error!("Could not join channels: {err}");
+                        }
+                    }
+                    BotMessage::PartChannels(channels) => {
+                        if let Err(err) = bot
+                            .update_channels(
+                                &msg_client,
+                                &channels.iter().map(String::as_str).collect::<Vec<_>>(),
+                                ChannelAction::Part,
+                            )
+                            .await
+                        {
+                            error!("Could not join channels: {err}");
+                        }
+                    }
+                }
             }
         });
 

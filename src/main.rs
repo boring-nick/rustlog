@@ -26,7 +26,7 @@ use std::{
 };
 use tokio::{
     signal::unix::{signal, SignalKind},
-    sync::watch,
+    sync::{mpsc, watch},
     time::timeout,
 };
 use tracing::{debug, info};
@@ -101,14 +101,17 @@ async fn run(config: Config, db: clickhouse::Client) -> anyhow::Result<()> {
         optout_codes: Arc::default(),
     };
 
+    let (bot_tx, bot_rx) = mpsc::channel(1);
+
     let login_credentials = StaticLoginCredentials::anonymous();
     let mut bot_handle = tokio::spawn(bot::run(
         login_credentials,
         app.clone(),
         writer_tx,
         shutdown_rx.clone(),
+        bot_rx,
     ));
-    let mut web_handle = tokio::spawn(web::run(app, shutdown_rx.clone()));
+    let mut web_handle = tokio::spawn(web::run(app, shutdown_rx.clone(), bot_tx));
 
     tokio::select! {
         _ = shutdown_rx.changed() => {

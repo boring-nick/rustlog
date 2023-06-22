@@ -14,6 +14,7 @@ Available options:
 - `clientSecret` (string): Twitch client secret.
 - `admins` (array of strings): List of usernames who are allowed to use administration commands.
 - `optOut` (object of strings: booleans): List of user ids who opted out from being logged.
+- `adminAPIKey` (string): API key for admin requests
 
 Example config:
 ```json
@@ -27,6 +28,7 @@ Example config:
   "clientID": "id",
   "clientSecret": "secret",
   "admins": [],
-  "optOut": {}
+  "optOut": {},
+  "adminAPIKey": "verysecurekey"
 }
 ```
