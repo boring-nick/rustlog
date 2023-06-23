@@ -29,6 +29,8 @@ use tower_http::{
 };
 use tracing::{debug, info};
 
+use self::handlers::no_cache_header;
+
 pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessage>) {
     aide::gen::on_error(|error| {
         panic!("Could not generate docs: {error}");
@@ -170,11 +172,12 @@ pub fn parse_listen_addr(addr: &str) -> Result<SocketAddr, AddrParseError> {
     }
 }
 
-async fn metrics() -> String {
+async fn metrics() -> impl IntoApiResponse {
     let metric_families = prometheus::gather();
 
     let encoder = TextEncoder::new();
-    encoder.encode_to_string(&metric_families).unwrap()
+    let metrics = encoder.encode_to_string(&metric_families).unwrap();
+    (no_cache_header(), metrics)
 }
 async fn serve_openapi(Extension(api): Extension<Arc<OpenApi>>) -> impl IntoApiResponse {
     Json(api.as_ref()).into_response()

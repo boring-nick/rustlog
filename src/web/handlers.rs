@@ -342,6 +342,6 @@ fn cache_header(secs: u64) -> TypedHeader<CacheControl> {
     )
 }
 
-fn no_cache_header() -> TypedHeader<CacheControl> {
+pub fn no_cache_header() -> TypedHeader<CacheControl> {
     TypedHeader(CacheControl::new().with_no_cache())
 }
