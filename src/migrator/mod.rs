@@ -166,9 +166,11 @@ impl Migrator {
         let elapsed = started_at.elapsed();
         info!("Migration finished in {elapsed:?}");
 
-        let throughput =
-            (total_read_bytes.load(Ordering::SeqCst) / 1024 / 1024) / (elapsed.as_secs());
-        info!("Average migration speed: {throughput} MiB/s");
+        if let Some(throughput) =
+            (total_read_bytes.load(Ordering::SeqCst) / 1024 / 1024).checked_div(elapsed.as_secs())
+        {
+            info!("Average migration speed: {throughput} MiB/s");
+        }
 
         Ok(())
     }
