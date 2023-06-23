@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 aide = { version = "0.11.0", features = ["axum", "redoc"] }
 anyhow = "1.0.71"
-axum = "0.6.18"
+axum = { version = "0.6.18", features = ["headers"] }
 chrono = { version = "0.4.26", features = ["serde"] }
 clap = { version = "4.3.4", features = ["derive"] }
 clickhouse = { version = "0.11.5", default-features = false, features = [

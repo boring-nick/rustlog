@@ -18,17 +18,19 @@ use crate::{
     },
     Result,
 };
+use aide::axum::IntoApiResponse;
 use axum::{
     extract::{Path, Query, RawQuery, State},
+    headers::CacheControl,
     response::Redirect,
-    Json,
+    Json, TypedHeader,
 };
 use chrono::{Datelike, Utc};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::time::Duration;
 use tracing::debug;
 
-pub async fn get_channels(app: State<App>) -> Json<ChannelsList> {
+pub async fn get_channels(app: State<App>) -> impl IntoApiResponse {
     let channel_ids = app.config.channels.read().unwrap().clone();
 
     let channels = app
@@ -36,19 +38,20 @@ pub async fn get_channels(app: State<App>) -> Json<ChannelsList> {
         .await
         .unwrap();
 
-    Json(ChannelsList {
+    let json = Json(ChannelsList {
         channels: channels
             .into_iter()
             .map(|(user_id, name)| Channel { name, user_id })
             .collect(),
-    })
+    });
+    (cache_header(600), json)
 }
 
 pub async fn get_channel_logs(
     app: State<App>,
     Path(channel_log_params): Path<ChannelLogsPath>,
     Query(logs_params): Query<LogsParams>,
-) -> Result<LogsResponse> {
+) -> Result<impl IntoApiResponse> {
     debug!("Params: {logs_params:?}");
 
     let channel_id = match channel_log_params.channel_info.channel_id_type {
@@ -71,17 +74,25 @@ pub async fn get_channel_logs(
 
     let stream = read_channel(&app.db, &channel_id, log_date, logs_params.reverse).await?;
 
-    Ok(LogsResponse {
+    let logs = LogsResponse {
         response_type: logs_params.response_type(),
         stream,
-    })
+    };
+
+    let cache = if log_date.is_today() {
+        no_cache_header()
+    } else {
+        cache_header(36000)
+    };
+
+    Ok((cache, logs))
 }
 
 pub async fn get_user_logs_by_name(
     app: State<App>,
     path: Path<UserLogsPath>,
     params: Query<LogsParams>,
-) -> Result<LogsResponse> {
+) -> Result<impl IntoApiResponse> {
     let user_id = app
         .get_users(vec![], vec![path.user.clone()])
         .await?
@@ -97,7 +108,7 @@ pub async fn get_user_logs_by_id(
     app: State<App>,
     path: Path<UserLogsPath>,
     params: Query<LogsParams>,
-) -> Result<LogsResponse> {
+) -> Result<impl IntoApiResponse> {
     let user_id = path.user.clone();
     get_user_logs(app, path, params, user_id).await
 }
@@ -107,7 +118,7 @@ async fn get_user_logs(
     Path(user_logs_path): Path<UserLogsPath>,
     Query(logs_params): Query<LogsParams>,
     user_id: String,
-) -> Result<LogsResponse> {
+) -> Result<impl IntoApiResponse> {
     let log_date = UserLogDate::try_from(&user_logs_path)?;
 
     let channel_id = match user_logs_path.channel_info.channel_id_type {
@@ -135,16 +146,24 @@ async fn get_user_logs(
     )
     .await?;
 
-    Ok(LogsResponse {
+    let logs = LogsResponse {
         stream,
         response_type: logs_params.response_type(),
-    })
+    };
+
+    let cache = if log_date.is_current_month() {
+        no_cache_header()
+    } else {
+        cache_header(36000)
+    };
+
+    Ok((cache, logs))
 }
 
 pub async fn list_available_logs(
     Query(AvailableLogsParams { user, channel }): Query<AvailableLogsParams>,
     app: State<App>,
-) -> Result<Json<AvailableLogs>> {
+) -> Result<impl IntoApiResponse> {
     let channel_id = match channel {
         ChannelParam::ChannelId(id) => id,
         ChannelParam::Channel(name) => app.get_user_id_by_name(&name).await?,
@@ -163,7 +182,7 @@ pub async fn list_available_logs(
     };
 
     if !available_logs.is_empty() {
-        Ok(Json(AvailableLogs { available_logs }))
+        Ok((cache_header(600), Json(AvailableLogs { available_logs })))
     } else {
         Err(Error::NotFound)
     }
@@ -232,7 +251,7 @@ pub async fn random_channel_line(
         channel,
     }): Path<LogsPathChannel>,
     Query(logs_params): Query<LogsParams>,
-) -> Result<LogsResponse> {
+) -> Result<impl IntoApiResponse> {
     let channel_id = match channel_id_type {
         ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
         ChannelIdType::Id => channel,
@@ -241,10 +260,11 @@ pub async fn random_channel_line(
     let random_line = read_random_channel_line(&app.db, &channel_id).await?;
     let stream = LogsStream::new_provided(vec![random_line])?;
 
-    Ok(LogsResponse {
+    let logs = LogsResponse {
         stream,
         response_type: logs_params.response_type(),
-    })
+    };
+    Ok((no_cache_header(), logs))
 }
 
 pub async fn random_user_line_by_name(
@@ -255,7 +275,7 @@ pub async fn random_user_line_by_name(
         user,
     }): Path<UserLogPathParams>,
     query: Query<LogsParams>,
-) -> Result<LogsResponse> {
+) -> Result<impl IntoApiResponse> {
     let user_id = app.get_user_id_by_name(&user).await?;
     random_user_line(app, channel_id_type, channel, user_id, query).await
 }
@@ -268,7 +288,7 @@ pub async fn random_user_line_by_id(
         user,
     }): Path<UserLogPathParams>,
     query: Query<LogsParams>,
-) -> Result<LogsResponse> {
+) -> Result<impl IntoApiResponse> {
     random_user_line(app, channel_id_type, channel, user, query).await
 }
 
@@ -278,7 +298,7 @@ async fn random_user_line(
     channel: String,
     user_id: String,
     Query(logs_params): Query<LogsParams>,
-) -> Result<LogsResponse> {
+) -> Result<impl IntoApiResponse> {
     let channel_id = match channel_id_type {
         ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
         ChannelIdType::Id => channel,
@@ -287,10 +307,11 @@ async fn random_user_line(
     let random_line = read_random_user_line(&app.db, &channel_id, &user_id).await?;
     let stream = LogsStream::new_provided(vec![random_line])?;
 
-    Ok(LogsResponse {
+    let logs = LogsResponse {
         stream,
         response_type: logs_params.response_type(),
-    })
+    };
+    Ok((no_cache_header(), logs))
 }
 
 pub async fn optout(app: State<App>) -> Json<String> {
@@ -311,4 +332,16 @@ pub async fn optout(app: State<App>) -> Json<String> {
     }
 
     Json(optout_code)
+}
+
+fn cache_header(secs: u64) -> TypedHeader<CacheControl> {
+    TypedHeader(
+        CacheControl::new()
+            .with_public()
+            .with_max_age(Duration::from_secs(secs)),
+    )
+}
+
+fn no_cache_header() -> TypedHeader<CacheControl> {
+    TypedHeader(CacheControl::new().with_no_cache())
 }
