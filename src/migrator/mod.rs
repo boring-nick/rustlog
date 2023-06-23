@@ -113,14 +113,12 @@ impl Migrator {
                             .with_max_entries(INSERT_BATCH_SIZE)
                             .with_period(Some(Duration::from_secs(15)));
 
+                        info!("Migrating channel {channel_id} date {year}-{month}");
+
                         for day in days {
                             let date = Utc
                                 .with_ymd_and_hms(year.try_into().unwrap(), month, day, 0, 0, 0)
                                 .unwrap();
-                            info!(
-                                "Migrating channel {channel_id} date {date}",
-                                date = date.format("%Y-%m-%d")
-                            );
                             let day_bytes = migrator
                                 .migrate_day(&root_path, &channel_id, date, &mut inserter)
                                 .await?;

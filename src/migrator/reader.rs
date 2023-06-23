@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
-use tracing::debug;
+use tracing::info;
 
 pub const COMPRESSED_CHANNEL_FILE: &str = "channel.txt.gz";
 pub const UNCOMPRESSED_CHANNEL_FILE: &str = "channel.txt";
@@ -49,7 +49,7 @@ impl LogsReader {
     }
 
     pub fn get_available_channel_logs(&self, channel_id: &str) -> Result<(ChannelLogDateMap, u64)> {
-        debug!("Getting logs for channel {channel_id}");
+        info!("Getting logs for channel {channel_id}");
         let channel_path = self.root_path.join(channel_id);
         if !channel_path.exists() {
             return Err(Error::NotFound);
@@ -64,60 +64,32 @@ impl LogsReader {
             let year_entry = year_entry?;
 
             if year_entry.metadata()?.is_dir() {
-                let year_dir = read_dir(year_entry.path())?;
                 let mut months = BTreeMap::new();
 
-                for month_entry in year_dir {
-                    let month_entry = month_entry?;
+                for month in 1..=12u32 {
+                    let mut days = Vec::with_capacity(31);
 
-                    if month_entry.metadata()?.is_dir() {
-                        let month_dir = read_dir(month_entry.path())?;
+                    for day in 1..=31u32 {
+                        let day_path = year_entry
+                            .path()
+                            .join(month.to_string())
+                            .join(day.to_string());
 
-                        let mut days: Vec<u32> = month_dir
-                            .collect::<Vec<_>>()
-                            .into_iter()
-                            .filter_map(|day_entry| {
-                                let day_entry = day_entry.expect("Could not read day");
+                        let compressed_channel_file_path = day_path.join(COMPRESSED_CHANNEL_FILE);
+                        let uncompressed_channel_file_path =
+                            day_path.join(UNCOMPRESSED_CHANNEL_FILE);
 
-                                if day_entry
-                                    .metadata()
-                                    .expect("Could not read day metadata")
-                                    .is_dir()
-                                    && day_entry.file_name().to_str() != Some("users")
-                                {
-                                    let day: u32 = day_entry
-                                        .file_name()
-                                        .to_str()
-                                        .and_then(|name| name.parse().ok())
-                                        .expect("invalid log entry day name");
+                        if let Ok(metadata) = fs::metadata(uncompressed_channel_file_path)
+                            .or_else(|_| fs::metadata(compressed_channel_file_path))
+                        {
+                            if metadata.is_file() {
+                                total_size += metadata.len();
+                                days.push(day);
+                            }
+                        }
+                    }
 
-                                    let compressed_channel_file_path =
-                                        day_entry.path().join(COMPRESSED_CHANNEL_FILE);
-                                    let uncompressed_channel_file_path =
-                                        day_entry.path().join(UNCOMPRESSED_CHANNEL_FILE);
-
-                                    if let Ok(metadata) =
-                                        fs::metadata(uncompressed_channel_file_path)
-                                            .or_else(|_| fs::metadata(compressed_channel_file_path))
-                                    {
-                                        if metadata.is_file() {
-                                            total_size += metadata.len();
-                                            return Some(day);
-                                        }
-                                    }
-                                }
-                                None
-                            })
-                            .collect();
-
-                        days.sort_unstable();
-
-                        let month = month_entry
-                            .file_name()
-                            .to_str()
-                            .and_then(|name| name.parse().ok())
-                            .expect("invalid log entry month name");
-
+                    if !days.is_empty() {
                         months.insert(month, days);
                     }
                 }
@@ -128,7 +100,9 @@ impl LogsReader {
                     .and_then(|name| name.parse().ok())
                     .expect("invalid log entry year name");
 
-                years.insert(year, months);
+                if !months.is_empty() {
+                    years.insert(year, months);
+                }
             }
         }
 
