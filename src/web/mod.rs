@@ -23,7 +23,10 @@ use std::{
     sync::Arc,
 };
 use tokio::sync::mpsc::Sender;
-use tower_http::{cors::CorsLayer, normalize_path::NormalizePath, trace::TraceLayer};
+use tower_http::{
+    compression::CompressionLayer, cors::CorsLayer, normalize_path::NormalizePath,
+    trace::TraceLayer, CompressionLevel,
+};
 use tracing::{debug, info};
 
 pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessage>) {
@@ -143,7 +146,8 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
         .finish_api(&mut api)
         .layer(Extension(Arc::new(api)))
         .with_state(app)
-        .layer(cors);
+        .layer(cors)
+        .layer(CompressionLayer::new().quality(CompressionLevel::Fastest));
     let app = NormalizePath::trim_trailing_slash(app);
 
     info!("Listening on {listen_address}");
