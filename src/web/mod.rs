@@ -15,6 +15,7 @@ use aide::{
     redoc::Redoc,
 };
 use axum::{middleware, response::IntoResponse, Extension, Json, ServiceExt};
+use axum_prometheus::PrometheusMetricLayerBuilder;
 use prometheus::TextEncoder;
 use std::{
     net::{AddrParseError, SocketAddr},
@@ -31,6 +32,8 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
     });
     aide::gen::infer_responses(true);
     aide::gen::extract_schemas(true);
+
+    metrics_prometheus::install();
 
     let listen_address =
         parse_listen_addr(&app.config.listen_address).expect("Invalid listen address");
@@ -123,18 +126,23 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
         )
         .api_route("/optout", post(handlers::optout))
         .route("/docs", Redoc::new("/openapi.json").axum_route())
+        .route("/openapi.json", get(serve_openapi))
+        .route("/assets/*asset", get(frontend::static_asset))
+        .fallback(frontend::static_asset)
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace_layer::make_span_with)
                 .on_response(trace_layer::on_response),
         )
-        .route("/openapi.json", get(serve_openapi))
+        .layer(
+            PrometheusMetricLayerBuilder::new()
+                .with_prefix("rustlog")
+                .build(),
+        )
         .route("/metrics", get(metrics))
-        .route("/assets/*asset", get(frontend::static_asset))
         .finish_api(&mut api)
         .layer(Extension(Arc::new(api)))
         .with_state(app)
-        .fallback(frontend::static_asset)
         .layer(cors);
     let app = NormalizePath::trim_trailing_slash(app);
 

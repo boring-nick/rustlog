@@ -51,6 +51,8 @@ twitch_api2 = { version = "0.6.1", features = [
     "twitch_oauth2",
 ] }
 twitch = { git = "https://github.com/jprochazk/twitch-rs", features = ["simd"] }
+axum-prometheus = "0.3.3"
+metrics-prometheus = "0.4.1"
 
 [dev-dependencies]
 pretty_assertions = "1.3.0"
