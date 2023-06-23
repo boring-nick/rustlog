@@ -4,45 +4,57 @@ use tracing::trace;
 
 const EXPIRY_INTERVAL: u64 = 600;
 
+// Banned users are stored as None
 #[derive(Clone, Default)]
 pub struct UsersCache {
-    store: Arc<DashMap<String, (Instant, String)>>, // User id, login name
+    ids: Arc<DashMap<String, (Instant, Option<String>)>>,
+    logins: Arc<DashMap<String, (Instant, Option<String>)>>,
 }
 
 impl UsersCache {
     pub fn insert(&self, id: String, name: String) {
-        let inserted_at = Instant::now();
-        self.store.insert(id, (inserted_at, name));
+        self.insert_optional(Some(id), Some(name));
     }
 
-    pub fn get_login(&self, id: &str) -> Option<String> {
-        self.store.get(id).and_then(|entry| {
+    pub fn insert_optional(&self, id: Option<String>, name: Option<String>) {
+        let inserted_at = Instant::now();
+
+        if let Some(id) = id.clone() {
+            self.ids.insert(id, (inserted_at, name.clone()));
+        }
+
+        if let Some(name) = name {
+            self.logins.insert(name, (inserted_at, id));
+        }
+    }
+
+    pub fn get_login(&self, id: &str) -> Option<Option<String>> {
+        if let Some(entry) = self.ids.get(id) {
             if entry.value().0.elapsed().as_secs() > EXPIRY_INTERVAL {
                 drop(entry);
                 trace!("Removing {id} from cache");
-                self.store.remove(id);
+                self.ids.remove(id);
                 None
             } else {
                 trace!("Using cached value for id {id}");
                 Some(entry.value().1.clone())
             }
-        })
+        } else {
+            None
+        }
     }
 
-    pub fn get_id(&self, name: &str) -> Option<String> {
-        // Iter has to be a separate variable to that it can be explicitly dropped to avoid deadlock
-        let mut store_iter = self.store.iter();
-        if let Some(entry) = store_iter.find(|entry| entry.value().1 == name) {
+    pub fn get_id(&self, name: &str) -> Option<Option<String>> {
+        if let Some(entry) = self.logins.get(name) {
             if entry.value().0.elapsed().as_secs() > EXPIRY_INTERVAL {
                 let key = entry.key().clone();
                 drop(entry);
-                drop(store_iter);
                 trace!("Removing {name} from cache");
-                self.store.remove(&key);
+                self.logins.remove(&key);
                 None
             } else {
                 trace!("Using cached value for name {name}");
-                Some(entry.key().clone())
+                Some(entry.value().1.clone())
             }
         } else {
             None

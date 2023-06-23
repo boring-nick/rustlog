@@ -2,7 +2,6 @@ pub mod cache;
 
 use self::cache::UsersCache;
 use crate::{config::Config, error::Error, Result};
-use anyhow::Context;
 use dashmap::DashSet;
 use std::{collections::HashMap, sync::Arc};
 use tracing::debug;
@@ -29,18 +28,22 @@ impl App {
         let mut names_to_request = Vec::new();
 
         for id in ids {
-            if let Some(login) = self.users.get_login(&id) {
-                users.insert(id, login);
-            } else {
-                ids_to_request.push(id.into())
+            match self.users.get_login(&id) {
+                Some(Some(login)) => {
+                    users.insert(id, login);
+                }
+                Some(None) => (),
+                None => ids_to_request.push(id.into()),
             }
         }
 
         for name in names {
-            if let Some(id) = self.users.get_id(&name) {
-                users.insert(id, name);
-            } else {
-                names_to_request.push(name.into());
+            match self.users.get_id(&name) {
+                Some(Some(id)) => {
+                    users.insert(id, name);
+                }
+                Some(None) => (),
+                None => names_to_request.push(name.into()),
             }
         }
 
@@ -72,25 +75,40 @@ impl App {
             users.insert(id, login);
         }
 
+        // Banned users which were not returned by the api
+        for id in ids_to_request {
+            if !users.contains_key(id.as_str()) {
+                self.users.insert_optional(Some(id.into_string()), None);
+            }
+        }
+        for name in names_to_request {
+            if !users.values().any(|login| login == name.as_str()) {
+                self.users.insert_optional(None, Some(name.into_string()));
+            }
+        }
+
         Ok(users)
     }
 
     pub async fn get_user_id_by_name(&self, name: &str) -> Result<String> {
-        if let Some(id) = self.users.get_id(name) {
-            Ok(id)
-        } else {
-            let request = GetUsersRequest::builder().login(vec![name.into()]).build();
-            let response = self.helix_client.req_get(request, &*self.token).await?;
-            let user = response
-                .data
-                .into_iter()
-                .next()
-                .context("Could not get user")?;
-            let user_id = user.id.into_string();
-
-            self.users.insert(user_id.clone(), user.login.into_string());
-
-            Ok(user_id)
+        match self.users.get_id(name) {
+            Some(Some(id)) => Ok(id),
+            Some(None) => Err(Error::NotFound),
+            None => {
+                let request = GetUsersRequest::builder().login(vec![name.into()]).build();
+                let response = self.helix_client.req_get(request, &*self.token).await?;
+                match response.data.into_iter().next() {
+                    Some(user) => {
+                        let user_id = user.id.into_string();
+                        self.users.insert(user_id.clone(), user.login.into_string());
+                        Ok(user_id)
+                    }
+                    None => {
+                        self.users.insert_optional(None, Some(name.to_owned()));
+                        Err(Error::NotFound)
+                    }
+                }
+            }
         }
     }
 
