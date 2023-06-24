@@ -90,7 +90,14 @@ impl SupibotMigrator {
                 let user = self
                     .users_client
                     .get_user_by_name(&supibot_message.platform_id)
-                    .await?;
+                    .await?
+                    // Used when the user id cannot be retrieved
+                    .unwrap_or_else(|| IvrUser {
+                        id: String::new(),
+                        display_name: supibot_message.platform_id.clone(),
+                        login: supibot_message.platform_id.clone(),
+                        chat_color: None,
+                    });
 
                 write_message(
                     supibot_message,

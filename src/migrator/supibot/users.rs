@@ -1,14 +1,14 @@
 use anyhow::{anyhow, Context};
 use serde::Deserialize;
 use std::collections::HashMap;
-use tracing::debug;
+use tracing::{debug, warn};
 
 #[derive(Default)]
 pub struct UsersClient {
     client: reqwest::Client,
     users: HashMap<String, IvrUser>,
     // Names mapped to ids
-    names: HashMap<String, String>,
+    names: HashMap<String, Option<String>>,
 }
 
 impl UsersClient {
@@ -75,9 +75,9 @@ impl UsersClient {
         users.into_values().next().context("Empty ivr response")
     }
 
-    pub async fn get_user_by_name(&mut self, name: &str) -> anyhow::Result<IvrUser> {
+    pub async fn get_user_by_name(&mut self, name: &str) -> anyhow::Result<Option<IvrUser>> {
         match self.names.get(name) {
-            Some(id) => Ok(self.users.get(id).cloned().unwrap()),
+            Some(id) => Ok(id.as_ref().map(|id| self.users.get(id).cloned().unwrap())),
             None => {
                 debug!("Fetching info for name {name}");
                 let response = self
@@ -99,15 +99,19 @@ impl UsersClient {
                     .json()
                     .await
                     .context("Could not deserialize IVR response")?;
-                let user = users
-                    .into_iter()
-                    .next()
-                    .context("No user in IVR response")?;
 
-                self.names.insert(user.login.clone(), user.id.clone());
-                self.users.insert(user.id.clone(), user.clone());
-
-                Ok(user)
+                match users.into_iter().next() {
+                    Some(user) => {
+                        self.names.insert(user.login.clone(), Some(user.id.clone()));
+                        self.users.insert(user.id.clone(), user.clone());
+                        Ok(Some(user))
+                    }
+                    None => {
+                        warn!("User {name} cannot be retrieved");
+                        self.names.insert(name.to_owned(), None);
+                        Ok(None)
+                    }
+                }
             }
         }
     }
