@@ -7,6 +7,8 @@ use tracing::debug;
 pub struct UsersClient {
     client: reqwest::Client,
     users: HashMap<String, IvrUser>,
+    // Names mapped to ids
+    names: HashMap<String, String>,
 }
 
 impl UsersClient {
@@ -71,6 +73,43 @@ impl UsersClient {
     pub async fn get_user(&mut self, id: &str) -> anyhow::Result<IvrUser> {
         let users = self.get_users(&[id]).await?;
         users.into_values().next().context("Empty ivr response")
+    }
+
+    pub async fn get_user_by_name(&mut self, name: &str) -> anyhow::Result<IvrUser> {
+        match self.names.get(name) {
+            Some(id) => Ok(self.users.get(id).cloned().unwrap()),
+            None => {
+                debug!("Fetching info for name {name}");
+                let response = self
+                    .client
+                    .get("https://api.ivr.fi/v2/twitch/user")
+                    .query(&[("login", name)])
+                    .send()
+                    .await?;
+
+                if !response.status().is_success() {
+                    return Err(anyhow!(
+                        "Got an error from IVR API: {} {}",
+                        response.status(),
+                        response.text().await?
+                    ));
+                }
+
+                let users: Vec<IvrUser> = response
+                    .json()
+                    .await
+                    .context("Could not deserialize IVR response")?;
+                let user = users
+                    .into_iter()
+                    .next()
+                    .context("No user in IVR response")?;
+
+                self.names.insert(user.login.clone(), user.id.clone());
+                self.users.insert(user.id.clone(), user.clone());
+
+                Ok(user)
+            }
+        }
     }
 
     pub fn get_cached_user(&self, id: &str) -> Option<&IvrUser> {

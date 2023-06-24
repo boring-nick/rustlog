@@ -64,30 +64,41 @@ impl SupibotMigrator {
             }
             let supibot_message = result?;
 
-            if supibot_message.historic != 0 {
-                todo!();
-            }
+            if supibot_message.historic == 0 {
+                if let Some(user) = self
+                    .users_client
+                    .get_cached_user(&supibot_message.platform_id)
+                {
+                    write_message(
+                        supibot_message,
+                        user,
+                        &self.channel_user,
+                        &mut self.inserter,
+                    )
+                    .await?;
+                } else {
+                    self.non_cached_messages
+                        .entry(supibot_message.platform_id.clone())
+                        .or_default()
+                        .push(supibot_message);
 
-            if let Some(user) = self
-                .users_client
-                .get_cached_user(&supibot_message.platform_id)
-            {
+                    if self.non_cached_messages.len() >= USERS_REQUEST_CHUNK_SIZE {
+                        self.flush_non_cached().await?;
+                    }
+                }
+            } else {
+                let user = self
+                    .users_client
+                    .get_user_by_name(&supibot_message.platform_id)
+                    .await?;
+
                 write_message(
                     supibot_message,
-                    user,
+                    &user,
                     &self.channel_user,
                     &mut self.inserter,
                 )
                 .await?;
-            } else {
-                self.non_cached_messages
-                    .entry(supibot_message.platform_id.clone())
-                    .or_default()
-                    .push(supibot_message);
-
-                if self.non_cached_messages.len() >= USERS_REQUEST_CHUNK_SIZE {
-                    self.flush_non_cached().await?;
-                }
             }
 
             let stats = self
