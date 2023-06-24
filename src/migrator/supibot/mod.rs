@@ -143,10 +143,6 @@ async fn write_message(
     channel_user: &IvrUser,
     inserter: &mut Inserter<Message<'_>>,
 ) -> anyhow::Result<()> {
-    let display_name = &user.display_name;
-    let user_id = &user.id;
-    let login = &user.login;
-
     let text = &supibot_message.text;
 
     let timestamp = NaiveDateTime::parse_from_str(&supibot_message.posted, DATE_FMT)
@@ -154,10 +150,14 @@ async fn write_message(
         .timestamp_millis() as u64;
 
     let raw = format!(
-            "@badges=;color=;display-name={display_name};emotes=;mod=0;room-id={channel_id};subscriber=0;tmi-sent-ts={timestamp};turbo=0;user-id={user_id};user-type= :{login}!{login}@{login}.tmi.twitch.tv PRIVMSG #{channel_login} :{text}",
-            channel_id = &channel_user.id,
-            channel_login = &channel_user.login,
-        );
+        "@id=;returning-chatter=0;turbo=0;mod=0;room-id={channel_id};subscriber=;tmi-sent-ts={timestamp};badge-info=;user-id={user_id};badges=;user-type=;display-name={display_name};flags=;emotes=;first-msg=0;color={color} :{login}!{login}@{login}.tmi.twitch.tv PRIVMSG #{channel_login} :{text}",
+        channel_id = &channel_user.id,
+        channel_login = &channel_user.login,
+        display_name = &user.display_name,
+        user_id = &user.id,
+        login = &user.login,
+        color = user.chat_color.as_deref().unwrap_or_default(),
+    );
 
     let message = Message {
         channel_id: Cow::Owned(channel_user.id.clone()),
