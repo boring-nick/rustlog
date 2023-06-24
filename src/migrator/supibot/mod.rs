@@ -1,5 +1,7 @@
 mod users;
 
+use self::users::IvrUser;
+
 use super::INSERT_BATCH_SIZE;
 use crate::{
     db::schema::{Message, MESSAGES_TABLE},
@@ -7,19 +9,19 @@ use crate::{
 };
 use anyhow::Context;
 use chrono::NaiveDateTime;
-use itertools::Itertools;
+use clickhouse::inserter::Inserter;
 use serde::Deserialize;
-use std::{borrow::Cow, fs::File, io::BufReader, path::Path, time::Duration};
+use std::{borrow::Cow, collections::HashMap, fs::File, io::BufReader, path::Path, time::Duration};
 use tracing::info;
 
 // Exmaple: 2023-06-23 14:46:26.588
 const DATE_FMT: &str = "%F %X%.3f";
-const CHUNK_SIZE: usize = 5000;
+const USERS_REQUEST_CHUNK_SIZE: usize = 50;
 
 pub async fn run(db: clickhouse::Client, file_path: &Path, channel_id: &str) -> anyhow::Result<()> {
     info!("Loading file {file_path:?}");
 
-    let mut inserter = db
+    let inserter = db
         .inserter(MESSAGES_TABLE)?
         .with_timeouts(
             Some(Duration::from_secs(30)),
@@ -30,67 +32,81 @@ pub async fn run(db: clickhouse::Client, file_path: &Path, channel_id: &str) -> 
 
     let mut users_client = UsersClient::default();
     let channel_user = users_client.get_user(channel_id).await?;
-    let channel_login = &channel_user.login;
 
-    let file = File::open(file_path)?;
-    let reader = BufReader::new(file);
-    let rdr = csv::Reader::from_reader(reader);
+    let migrator = SupibotMigrator {
+        users_client,
+        non_cached_messages: HashMap::with_capacity(USERS_REQUEST_CHUNK_SIZE),
+        inserter,
+        channel_user,
+    };
 
-    for chunk in &rdr
-        .into_deserialize::<SupibotMessage>()
-        .enumerate()
-        .chunks(CHUNK_SIZE)
-    {
-        let supibot_messages: Vec<_> = chunk
-            .map(|(i, result)| {
-                if i % 10000 == 0 {
-                    info!("Processing message {}", i + 1);
-                }
-                result
-            })
-            .filter_ok(|message| message.historic == 0)
-            .try_collect()?;
+    migrator.migrate_channel(file_path).await
+}
 
-        let mut user_ids: Vec<&str> = supibot_messages
-            .iter()
-            .map(|message| message.platform_id.as_str())
-            .collect();
-        user_ids.dedup();
-        let users = users_client.get_users(&user_ids).await?;
+struct SupibotMigrator {
+    users_client: UsersClient,
+    /// Messages whose users are not cached
+    /// Indexed by user id
+    non_cached_messages: HashMap<String, Vec<SupibotMessage>>,
+    inserter: Inserter<Message<'static>>,
+    channel_user: IvrUser,
+}
 
-        for supibot_message in supibot_messages {
-            let text = &supibot_message.text;
+impl SupibotMigrator {
+    async fn migrate_channel(mut self, file_path: &Path) -> anyhow::Result<()> {
+        let file = File::open(file_path)?;
+        let reader = BufReader::new(file);
+        let rdr = csv::Reader::from_reader(reader);
 
-            let user = users.get(&supibot_message.platform_id).with_context(|| {
-                format!(
-                    "User {} is not in the users response",
-                    supibot_message.platform_id
+        for (i, result) in rdr.into_deserialize::<SupibotMessage>().enumerate() {
+            if i % 10000 == 0 {
+                info!("Processing message {}", i + 1);
+            }
+            let supibot_message = result?;
+
+            if supibot_message.historic != 0 {
+                todo!();
+            }
+
+            if let Some(user) = self
+                .users_client
+                .get_cached_user(&supibot_message.platform_id)
+            {
+                write_message(
+                    supibot_message,
+                    user,
+                    &self.channel_user,
+                    &mut self.inserter,
                 )
-            })?;
-            let display_name = &user.display_name;
-            let user_id = &user.id;
-            let login = &user.login;
+                .await?;
+            } else {
+                self.non_cached_messages
+                    .entry(supibot_message.platform_id.clone())
+                    .or_default()
+                    .push(supibot_message);
 
-            let timestamp = NaiveDateTime::parse_from_str(&supibot_message.posted, DATE_FMT)
-                .unwrap()
-                .timestamp_millis() as u64;
+                if self.non_cached_messages.len() >= USERS_REQUEST_CHUNK_SIZE {
+                    self.flush_non_cached().await?;
+                }
+            }
 
-            let raw = format!(
-            "@badges=;color=;display-name={display_name};emotes=;mod=0;room-id={channel_id};subscriber=0;tmi-sent-ts={timestamp};turbo=0;user-id={user_id};user-type= :{login}!{login}@rutntutn.tmi.twitch.tv PRIVMSG #{channel_login} :{text}"
-        );
-
-            let message = Message {
-                channel_id: Cow::Borrowed(channel_id),
-                user_id: Cow::Owned(user.id.clone()),
-                timestamp,
-                raw: Cow::Owned(raw),
-            };
-
-            inserter.write(&message).await?;
+            let stats = self
+                .inserter
+                .commit()
+                .await
+                .context("Could not flush messages")?;
+            if stats.entries > 0 {
+                info!(
+                    "DB: {} entries ({} transactions) have been inserted",
+                    stats.entries, stats.transactions,
+                );
+            }
         }
+        self.flush_non_cached().await?;
 
-        let stats = inserter
-            .commit()
+        let stats = self
+            .inserter
+            .end()
             .await
             .context("Could not flush messages")?;
         if stats.entries > 0 {
@@ -99,16 +115,58 @@ pub async fn run(db: clickhouse::Client, file_path: &Path, channel_id: &str) -> 
                 stats.entries, stats.transactions,
             );
         }
+
+        Ok(())
     }
 
-    let stats = inserter.end().await.context("Could not flush messages")?;
-    if stats.entries > 0 {
-        info!(
-            "DB: {} entries ({} transactions) have been inserted",
-            stats.entries, stats.transactions,
+    async fn flush_non_cached(&mut self) -> anyhow::Result<()> {
+        let user_ids = self.non_cached_messages.keys().collect::<Vec<_>>();
+        let users = self.users_client.get_users(&user_ids).await?;
+
+        for (user_id, messages) in self.non_cached_messages.drain() {
+            let user = users
+                .get(&user_id)
+                .with_context(|| format!("User {user_id} is not in the users response",))?;
+
+            for message in messages {
+                write_message(message, user, &self.channel_user, &mut self.inserter).await?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+async fn write_message(
+    supibot_message: SupibotMessage,
+    user: &IvrUser,
+    channel_user: &IvrUser,
+    inserter: &mut Inserter<Message<'_>>,
+) -> anyhow::Result<()> {
+    let display_name = &user.display_name;
+    let user_id = &user.id;
+    let login = &user.login;
+
+    let text = &supibot_message.text;
+
+    let timestamp = NaiveDateTime::parse_from_str(&supibot_message.posted, DATE_FMT)
+        .unwrap()
+        .timestamp_millis() as u64;
+
+    let raw = format!(
+            "@badges=;color=;display-name={display_name};emotes=;mod=0;room-id={channel_id};subscriber=0;tmi-sent-ts={timestamp};turbo=0;user-id={user_id};user-type= :{login}!{login}@{login}.tmi.twitch.tv PRIVMSG #{channel_login} :{text}",
+            channel_id = &channel_user.id,
+            channel_login = &channel_user.login,
         );
-    }
 
+    let message = Message {
+        channel_id: Cow::Owned(channel_user.id.clone()),
+        user_id: Cow::Owned(user.id.clone()),
+        timestamp,
+        raw: Cow::Owned(raw),
+    };
+
+    inserter.write(&message).await?;
     Ok(())
 }
 

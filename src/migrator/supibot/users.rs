@@ -84,4 +84,5 @@ pub struct IvrUser {
     pub id: String,
     pub display_name: String,
     pub login: String,
+    pub chat_color: String,
 }
