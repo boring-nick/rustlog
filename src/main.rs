@@ -76,6 +76,9 @@ async fn main() -> anyhow::Result<()> {
             channel_id,
             jobs,
         }) => migrate(db, source_dir, channel_id, jobs).await,
+        Some(Command::MigrateSupibot { file, channel_id }) => {
+            migrator::supibot::run(db, &file, &channel_id).await
+        }
     }
 }
 

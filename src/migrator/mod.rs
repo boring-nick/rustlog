@@ -1,4 +1,5 @@
 mod reader;
+pub mod supibot;
 
 use self::reader::{LogsReader, COMPRESSED_CHANNEL_FILE, UNCOMPRESSED_CHANNEL_FILE};
 use crate::{

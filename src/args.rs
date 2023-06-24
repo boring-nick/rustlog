@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -20,5 +21,11 @@ pub enum Command {
         /// Parallel migration jobs
         #[clap(short, long, default_value_t = 1)]
         jobs: usize,
+    },
+    MigrateSupibot {
+        #[clap(short, long)]
+        file: PathBuf,
+        #[clap(short, long)]
+        channel_id: String,
     },
 }
