@@ -1,6 +1,10 @@
+mod migratable;
+
 use crate::Result;
 use clickhouse::Client;
 use tracing::{debug, info};
+
+use self::migratable::Migratable;
 
 pub async fn run(db: &Client) -> Result<()> {
     create_migrations_table(db).await?;
@@ -44,7 +48,11 @@ MATERIALIZE PROJECTION channel_log_dates",
     Ok(())
 }
 
-async fn run_migration(db: &Client, name: &str, query: &str) -> Result<()> {
+async fn run_migration<'a, T: Migratable<'a>>(
+    db: &'a Client,
+    name: &str,
+    migratable: T,
+) -> Result<()> {
     let count = db
         .query("SELECT count(*) FROM __rustlog_migrations WHERE name = ?")
         .bind(name)
@@ -53,7 +61,8 @@ async fn run_migration(db: &Client, name: &str, query: &str) -> Result<()> {
 
     if count == 0 {
         info!("Running migration {name}");
-        db.query(query).execute().await?;
+        migratable.run(db).await?;
+
         db.query("INSERT INTO __rustlog_migrations VALUES (?, now())")
             .bind(name)
             .execute()
