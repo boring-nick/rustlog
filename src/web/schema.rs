@@ -111,11 +111,7 @@ fn deserialize_bool_param<'de, D>(deserializer: D) -> Result<bool, D::Error>
 where
     D: Deserializer<'de>,
 {
-    let opt = Option::<String>::deserialize(deserializer)?;
-    match opt.as_deref() {
-        Some("1") | Some("true") | Some("") => Ok(true),
-        _ => Ok(false),
-    }
+    Ok(Option::<&str>::deserialize(deserializer)?.is_some())
 }
 
 impl TryFrom<&UserLogsPath> for UserLogDate {
