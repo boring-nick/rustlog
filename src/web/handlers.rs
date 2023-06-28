@@ -72,7 +72,15 @@ pub async fn get_channel_logs(
     let log_date = ChannelLogDate::try_from(channel_log_params.date)?;
     debug!("Querying logs for date {log_date:?}");
 
-    let stream = read_channel(&app.db, &channel_id, log_date, logs_params.reverse).await?;
+    let stream = read_channel(
+        &app.db,
+        &channel_id,
+        log_date,
+        logs_params.reverse,
+        logs_params.limit,
+        logs_params.offset,
+    )
+    .await?;
 
     let logs = LogsResponse {
         response_type: logs_params.response_type(),
@@ -143,6 +151,8 @@ async fn get_user_logs(
         &user_id,
         log_date,
         logs_params.reverse,
+        logs_params.limit,
+        logs_params.offset,
     )
     .await?;
 

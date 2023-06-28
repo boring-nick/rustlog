@@ -89,6 +89,8 @@ pub struct LogsParams {
     pub reverse: bool,
     #[serde(default, deserialize_with = "deserialize_bool_param")]
     pub ndjson: bool,
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
 }
 
 impl LogsParams {
