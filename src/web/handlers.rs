@@ -25,7 +25,6 @@ use axum::{
     response::Redirect,
     Json, TypedHeader,
 };
-use chrono::{Datelike, Utc};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::time::Duration;
 use tracing::debug;
@@ -204,54 +203,72 @@ pub async fn redirect_to_latest_channel_logs(
         channel,
     }): Path<LogsPathChannel>,
     RawQuery(query): RawQuery,
-) -> Redirect {
-    let today = Utc::now();
-    let year = today.year();
-    let month = today.month();
-    let day = today.day();
+    app: State<App>,
+) -> Result<Redirect> {
+    let channel_id = match channel_id_type {
+        ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
+        ChannelIdType::Id => channel.clone(),
+    };
 
-    let mut new_uri = format!("/{channel_id_type}/{channel}/{year}/{month}/{day}");
+    let available_logs = read_available_channel_logs(&app.db, &channel_id).await?;
+    let latest_log = available_logs.first().ok_or(Error::NotFound)?;
+
+    let mut new_uri = format!("/{channel_id_type}/{channel}/{latest_log}");
     if let Some(query) = query {
         new_uri.push('?');
         new_uri.push_str(&query);
     }
 
-    Redirect::to(&new_uri)
+    Ok(Redirect::to(&new_uri))
 }
 
 pub async fn redirect_to_latest_user_name_logs(
     path: Path<UserLogPathParams>,
     query: RawQuery,
-) -> Redirect {
-    redirect_to_latest_user_logs(path, query, "user")
+    app: State<App>,
+) -> Result<Redirect> {
+    redirect_to_latest_user_logs(path, query, false, app).await
 }
 
 pub async fn redirect_to_latest_user_id_logs(
     path: Path<UserLogPathParams>,
     query: RawQuery,
-) -> Redirect {
-    redirect_to_latest_user_logs(path, query, "userid")
+    app: State<App>,
+) -> Result<Redirect> {
+    redirect_to_latest_user_logs(path, query, true, app).await
 }
 
-fn redirect_to_latest_user_logs(
+async fn redirect_to_latest_user_logs(
     Path(UserLogPathParams {
         channel_id_type,
         channel,
         user,
     }): Path<UserLogPathParams>,
     RawQuery(query): RawQuery,
-    user_id_type: &str,
-) -> Redirect {
-    let today = Utc::now();
-    let year = today.year();
-    let month = today.month();
+    user_is_id: bool,
+    app: State<App>,
+) -> Result<Redirect> {
+    let channel_id = match channel_id_type {
+        ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
+        ChannelIdType::Id => channel.clone(),
+    };
+    let user_id = if user_is_id {
+        user.clone()
+    } else {
+        app.get_user_id_by_name(&user).await?
+    };
 
-    let mut new_uri = format!("/{channel_id_type}/{channel}/{user_id_type}/{user}/{year}/{month}");
+    let available_logs = read_available_user_logs(&app.db, &channel_id, &user_id).await?;
+    let latest_log = available_logs.first().ok_or(Error::NotFound)?;
+
+    let user_id_type = if user_is_id { "userid" } else { "user" };
+
+    let mut new_uri = format!("/{channel_id_type}/{channel}/{user_id_type}/{user}/{latest_log}");
     if let Some(query) = query {
         new_uri.push('?');
         new_uri.push_str(&query);
     }
-    Redirect::to(&new_uri)
+    Ok(Redirect::to(&new_uri))
 }
 
 pub async fn random_channel_line(

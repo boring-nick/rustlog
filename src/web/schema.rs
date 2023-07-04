@@ -141,6 +141,18 @@ pub struct AvailableLogDate {
     pub day: Option<String>,
 }
 
+impl Display for AvailableLogDate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.year, self.month)?;
+
+        if let Some(day) = &self.day {
+            write!(f, "/{day}")?;
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Deserialize, JsonSchema)]
 pub struct AvailableLogsParams {
     #[serde(flatten)]
