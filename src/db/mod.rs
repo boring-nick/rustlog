@@ -23,9 +23,12 @@ pub async fn read_channel(
     channel_id: &str,
     log_date: ChannelLogDate,
     reverse: bool,
+    limit: Option<u64>,
+    offset: Option<u64>,
 ) -> Result<LogsStream> {
     let suffix = if reverse { "DESC" } else { "ASC" };
-    let query = format!("SELECT raw FROM message WHERE channel_id = ? AND toStartOfDay(timestamp) = ? ORDER BY timestamp {suffix}");
+    let mut query = format!("SELECT raw FROM message WHERE channel_id = ? AND toStartOfDay(timestamp) = ? ORDER BY timestamp {suffix}");
+    apply_limit_offset(&mut query, limit, offset);
 
     let cursor = db
         .query(&query)
@@ -41,9 +44,12 @@ pub async fn read_user(
     user_id: &str,
     log_date: UserLogDate,
     reverse: bool,
+    limit: Option<u64>,
+    offset: Option<u64>,
 ) -> Result<LogsStream> {
     let suffix = if reverse { "DESC" } else { "ASC" };
-    let query = format!("SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND toStartOfMonth(timestamp) = ? ORDER BY timestamp {suffix}");
+    let mut query = format!("SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND toStartOfMonth(timestamp) = ? ORDER BY timestamp {suffix}");
+    apply_limit_offset(&mut query, limit, offset);
 
     let cursor = db
         .query(&query)
@@ -187,4 +193,13 @@ pub async fn delete_user_logs(db: &Client, user_id: &str) -> Result<()> {
         .execute()
         .await?;
     Ok(())
+}
+
+fn apply_limit_offset(query: &mut String, limit: Option<u64>, offset: Option<u64>) {
+    if let Some(limit) = limit {
+        *query = format!("{query} LIMIT {limit}");
+    }
+    if let Some(offset) = offset {
+        *query = format!("{query} OFFSET {offset}");
+    }
 }

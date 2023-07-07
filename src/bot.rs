@@ -13,7 +13,7 @@ use tokio::{
     sync::mpsc::{Receiver, Sender},
     time::sleep,
 };
-use tracing::{debug, error, info, trace};
+use tracing::{debug, error, info, log::warn, trace};
 use twitch_irc::{
     login::LoginCredentials,
     message::{AsRawIRC, IRCMessage, ServerMessage},
@@ -155,13 +155,11 @@ impl Bot {
         if let ServerMessage::Privmsg(privmsg) = &msg {
             trace!("Processing message {}", privmsg.message_text);
             if let Some(cmd) = privmsg.message_text.strip_prefix(COMMAND_PREFIX) {
-                if self.app.config.admins.contains(&privmsg.sender.login) {
-                    self.handle_command(cmd, client, &privmsg.sender.id).await?;
-                } else {
-                    info!(
-                        "User {} is not an admin to use commands",
-                        privmsg.sender.login
-                    );
+                if let Err(err) = self
+                    .handle_command(cmd, client, &privmsg.sender.id, &privmsg.sender.login)
+                    .await
+                {
+                    warn!("Could not handle command {cmd}: {err:#}");
                 }
             }
         }
@@ -169,6 +167,20 @@ impl Bot {
         self.write_message(msg).await?;
 
         Ok(())
+    }
+
+    fn check_admin(&self, user_login: &str) -> anyhow::Result<()> {
+        if self
+            .app
+            .config
+            .admins
+            .iter()
+            .any(|login| login == user_login)
+        {
+            Ok(())
+        } else {
+            Err(anyhow!("User {user_login} is not an admin"))
+        }
     }
 
     async fn write_message(&self, msg: ServerMessage) -> anyhow::Result<()> {
@@ -211,6 +223,7 @@ impl Bot {
         cmd: &str,
         client: &TwitchClient<C>,
         sender_id: &str,
+        sender_login: &str,
     ) -> anyhow::Result<()> {
         debug!("Processing command {cmd}");
         let mut split = cmd.split_whitespace();
@@ -219,10 +232,12 @@ impl Bot {
 
             match action {
                 "join" => {
+                    self.check_admin(sender_login)?;
                     self.update_channels(client, &args, ChannelAction::Join)
                         .await?
                 }
                 "leave" | "part" => {
+                    self.check_admin(sender_login)?;
                     self.update_channels(client, &args, ChannelAction::Part)
                         .await?
                 }

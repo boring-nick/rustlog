@@ -89,6 +89,8 @@ pub struct LogsParams {
     pub reverse: bool,
     #[serde(default, deserialize_with = "deserialize_bool_param")]
     pub ndjson: bool,
+    pub limit: Option<u64>,
+    pub offset: Option<u64>,
 }
 
 impl LogsParams {
@@ -137,6 +139,18 @@ pub struct AvailableLogDate {
     pub month: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub day: Option<String>,
+}
+
+impl Display for AvailableLogDate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.year, self.month)?;
+
+        if let Some(day) = &self.day {
+            write!(f, "/{day}")?;
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Deserialize, JsonSchema)]
