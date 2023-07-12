@@ -331,6 +331,8 @@ async fn random_user_line(
         ChannelIdType::Id => channel,
     };
 
+    app.check_opted_out(&channel_id, Some(&user_id))?;
+
     let random_line = read_random_user_line(&app.db, &channel_id, &user_id).await?;
     let stream = LogsStream::new_provided(vec![random_line])?;
 
