@@ -5,6 +5,7 @@ mod responders;
 pub mod schema;
 mod trace_layer;
 
+use self::handlers::no_cache_header;
 use crate::{app::App, bot::BotMessage, web::admin::admin_auth, ShutdownRx};
 use aide::{
     axum::{
@@ -29,8 +30,6 @@ use tower_http::{
 };
 use tracing::{debug, info};
 
-use self::handlers::no_cache_header;
-
 pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessage>) {
     aide::gen::on_error(|error| {
         panic!("Could not generate docs: {error}");
@@ -50,10 +49,12 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
     let admin_routes = ApiRouter::new()
         .api_route(
             "/channels",
-            post_with(admin::add_channels, |op| {
+            post_with(admin::add_channels, |mut op| {
+                admin::admin_auth_doc(&mut op);
                 op.tag("Admin").description("Join the specified channels")
             })
-            .delete_with(admin::remove_channels, |op| {
+            .delete_with(admin::remove_channels, |mut op| {
+                admin::admin_auth_doc(&mut op);
                 op.tag("Admin").description("Leave the specified channels")
             }),
         )
