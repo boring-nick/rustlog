@@ -258,6 +258,8 @@ async fn redirect_to_latest_user_logs(
         app.get_user_id_by_name(&user).await?
     };
 
+    app.check_opted_out(&channel_id, Some(&user_id))?;
+
     let available_logs = read_available_user_logs(&app.db, &channel_id, &user_id).await?;
     let latest_log = available_logs.first().ok_or(Error::NotFound)?;
 
