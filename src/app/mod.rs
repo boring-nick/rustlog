@@ -1,7 +1,7 @@
 pub mod cache;
 
 use self::cache::UsersCache;
-use crate::{config::Config, error::Error, Result, db::delete_user_logs};
+use crate::{config::Config, db::delete_user_logs, error::Error, Result};
 use anyhow::Context;
 use dashmap::DashSet;
 use std::{collections::HashMap, sync::Arc};
@@ -115,13 +115,13 @@ impl App {
 
     pub async fn optout_user(&self, user_id: &str) -> anyhow::Result<()> {
         delete_user_logs(&self.db, user_id)
-                .await
-                .context("Could not delete logs")?;
+            .await
+            .context("Could not delete logs")?;
 
-            self.config.opt_out.insert(user_id.to_owned(), true);
-            self.config.save()?;
-            info!("User {user_id} opted out");
-        
+        self.config.opt_out.insert(user_id.to_owned(), true);
+        self.config.save()?;
+        info!("User {user_id} opted out");
+
         Ok(())
     }
 
