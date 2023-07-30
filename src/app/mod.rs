@@ -1,10 +1,11 @@
 pub mod cache;
 
 use self::cache::UsersCache;
-use crate::{config::Config, error::Error, Result};
+use crate::{config::Config, error::Error, Result, db::delete_user_logs};
+use anyhow::Context;
 use dashmap::DashSet;
 use std::{collections::HashMap, sync::Arc};
-use tracing::debug;
+use tracing::{debug, info};
 use twitch_api2::{helix::users::GetUsersRequest, twitch_oauth2::AppAccessToken, HelixClient};
 
 #[derive(Clone)]
@@ -110,6 +111,18 @@ impl App {
                 }
             }
         }
+    }
+
+    pub async fn optout_user(&self, user_id: &str) -> anyhow::Result<()> {
+        delete_user_logs(&self.db, user_id)
+                .await
+                .context("Could not delete logs")?;
+
+            self.config.opt_out.insert(user_id.to_owned(), true);
+            self.config.save()?;
+            info!("User {user_id} opted out");
+        
+        Ok(())
     }
 
     pub fn check_opted_out(&self, channel_id: &str, user_id: Option<&str>) -> Result<()> {
