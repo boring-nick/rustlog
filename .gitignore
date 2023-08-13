@@ -2,5 +2,4 @@
 /logs*
 config.json
 /ch-data
-
 /web/node_modules
