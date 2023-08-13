@@ -40,6 +40,23 @@ services:
 - `cargo install --locked --git https://github.com/boring-nick/rustlog`
 - You can now run the `rustlog` binary
 
+### Local Development
+
+Run clickhouse and then build rustlog
+
+```
+docker compose -f docker-compose.dev.yml up -d clickhouse
+docker compose -f docker-compose.dev.yml up --build rustlog
+```
+
+In a separate terminal, run the frontend
+
+```
+cd web
+yarn install
+yarn start
+```
+
 ## Advantages over justlog
 
 - Significantly better storage efficiency (2x+ improvement) thanks to not duplicating log files and better compression (using ZSTD in Clickhouse)

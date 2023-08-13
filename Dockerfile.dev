@@ -1,0 +1,9 @@
+FROM rust:1.70-bullseye
+WORKDIR /app
+COPY . .
+USER root
+RUN cargo install --path /app
+RUN cargo build --dev
+RUN ls -la /app/target/
+USER rustlog
+CMD ["/usr/local/bin/rustlog"]
