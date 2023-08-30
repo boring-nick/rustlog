@@ -262,16 +262,14 @@ impl Bot {
             self.app.optout_user(sender_id).await?;
 
             Ok(())
+        } else if self.check_admin(sender_login).is_ok() {
+            let user_id = self.app.get_user_id_by_name(arg).await?;
+
+            self.app.optout_user(&user_id).await?;
+
+            Ok(())
         } else {
-            if self.check_admin(sender_login).is_ok() {
-                let user_id = self.app.get_user_id_by_name(arg).await?;
-
-                self.app.optout_user(&user_id).await?;
-
-                Ok(())
-            } else {
-                Err(anyhow!("Invalid optout code"))
-            }
+            Err(anyhow!("Invalid optout code"))
         }
     }
 

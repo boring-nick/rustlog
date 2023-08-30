@@ -116,9 +116,9 @@ async fn get_channel_logs_inner(
     channel_id: &str,
     channel_log_params: LogRangeParams,
 ) -> Result<impl IntoApiResponse> {
-    app.check_opted_out(&channel_id, None)?;
+    app.check_opted_out(channel_id, None)?;
 
-    let stream = read_channel(&app.db, &channel_id, &channel_log_params).await?;
+    let stream = read_channel(&app.db, channel_id, &channel_log_params).await?;
 
     let logs = LogsResponse {
         response_type: channel_log_params.logs_params.response_type(),
@@ -251,9 +251,9 @@ async fn get_user_logs_inner(
     user_id: &str,
     log_params: LogRangeParams,
 ) -> Result<impl IntoApiResponse> {
-    app.check_opted_out(&channel_id, Some(&user_id))?;
+    app.check_opted_out(channel_id, Some(user_id))?;
 
-    let stream = read_user(&app.db, &channel_id, &user_id, &log_params).await?;
+    let stream = read_user(&app.db, channel_id, user_id, &log_params).await?;
 
     let logs = LogsResponse {
         stream,
