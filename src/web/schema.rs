@@ -1,5 +1,5 @@
 use super::responders::logs::{JsonResponseType, LogsResponseType};
-use crate::logs::schema::{ChannelLogDate, UserLogDate};
+use crate::logs::schema::UserLogDate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::{fmt::Display, num::ParseIntError};
@@ -44,30 +44,18 @@ pub struct UserLogsPath {
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct ChannelLogsPath {
+pub struct ChannelLogsByDatePath {
     #[serde(flatten)]
     pub channel_info: LogsPathChannel,
     #[serde(flatten)]
-    pub date: ChannelLogDatePath,
+    pub date: LogsPathDate,
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct ChannelLogDatePath {
+pub struct LogsPathDate {
     pub year: String,
     pub month: String,
     pub day: String,
-}
-
-impl TryFrom<ChannelLogDatePath> for ChannelLogDate {
-    type Error = ParseIntError;
-
-    fn try_from(value: ChannelLogDatePath) -> Result<Self, Self::Error> {
-        Ok(Self {
-            year: value.year.parse()?,
-            month: value.month.parse()?,
-            day: value.day.parse()?,
-        })
-    }
 }
 
 #[derive(Deserialize, JsonSchema)]

@@ -1,28 +1,19 @@
 pub mod message;
 
-use chrono::{Datelike, NaiveDate, Utc};
+use chrono::{DateTime, Datelike, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
 
-#[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, Copy)]
-pub struct ChannelLogDate {
-    pub year: u32,
-    pub month: u32,
-    pub day: u32,
-}
+use crate::web::schema::LogsParams;
 
-impl ChannelLogDate {
-    pub fn is_today(&self) -> bool {
-        Some(Utc::now().date_naive())
-            == NaiveDate::from_ymd_opt(self.year as i32, self.month, self.day)
-    }
-}
-
-impl Display for ChannelLogDate {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}-{:0>2}-{:0>2}", self.year, self.month, self.day)
-    }
+#[derive(Deserialize, JsonSchema)]
+pub struct ChannelLogParams {
+    #[schemars(with = "String")]
+    pub from: DateTime<Utc>,
+    #[schemars(with = "String")]
+    pub to: DateTime<Utc>,
+    #[serde(flatten)]
+    pub logs_params: LogsParams,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]

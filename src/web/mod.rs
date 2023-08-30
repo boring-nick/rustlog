@@ -77,7 +77,7 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
         )
         .api_route(
             "/:channel_id_type/:channel",
-            get_with(handlers::redirect_to_latest_channel_logs, |op| {
+            get_with(handlers::get_channel_logs, |op| {
                 op.description("Get latest channel logs")
             }),
         )
@@ -96,7 +96,7 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
         )
         .api_route(
             "/:channel_id_type/:channel/:year/:month/:day",
-            get_with(handlers::get_channel_logs, |op| {
+            get_with(handlers::get_channel_logs_by_date, |op| {
                 op.description("Get channel logs from the given day")
             }),
         )
