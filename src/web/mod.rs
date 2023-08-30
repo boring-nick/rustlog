@@ -78,20 +78,20 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
         .api_route(
             "/:channel_id_type/:channel",
             get_with(handlers::get_channel_logs, |op| {
-                op.description("Get latest channel logs")
+                op.description("Get channel logs. If the `to` and `from` query params are not given, redirect to latest available day")
             }),
         )
         // For some reason axum considers it a path overlap if user id type is dynamic
         .api_route(
             "/:channel_id_type/:channel/user/:user",
-            get_with(handlers::redirect_to_latest_user_name_logs, |op| {
-                op.description("Get latest user logs")
+            get_with(handlers::get_user_logs_by_name, |op| {
+                op.description("Get user logs by name. If the `to` and `from` query params are not given, redirect to latest available month")
             }),
         )
         .api_route(
             "/:channel_id_type/:channel/userid/:user",
-            get_with(handlers::redirect_to_latest_user_id_logs, |op| {
-                op.description("Get latest user logs")
+            get_with(handlers::get_user_logs_id, |op| {
+                op.description("Get user logs by id. If the `to` and `from` query params are not given, redirect to latest available month")
             }),
         )
         .api_route(
@@ -102,13 +102,13 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
         )
         .api_route(
             "/:channel_id_type/:channel/user/:user/:year/:month",
-            get_with(handlers::get_user_logs_by_name, |op| {
+            get_with(handlers::get_user_logs_by_date_name, |op| {
                 op.description("Get user logs in a channel from the given month")
             }),
         )
         .api_route(
             "/:channel_id_type/:channel/userid/:user/:year/:month",
-            get_with(handlers::get_user_logs_by_id, |op| {
+            get_with(handlers::get_user_logs_by_date_id, |op| {
                 op.description("Get user logs in a channel from the given month")
             }),
         )

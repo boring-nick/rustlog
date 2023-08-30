@@ -1,8 +1,7 @@
 use super::responders::logs::{JsonResponseType, LogsResponseType};
-use crate::logs::schema::UserLogDate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
-use std::{fmt::Display, num::ParseIntError};
+use std::fmt::Display;
 
 #[derive(Serialize, JsonSchema)]
 pub struct ChannelsList {
@@ -102,17 +101,6 @@ where
     D: Deserializer<'de>,
 {
     Ok(Option::<&str>::deserialize(deserializer)?.is_some())
-}
-
-impl TryFrom<&UserLogsPath> for UserLogDate {
-    type Error = ParseIntError;
-
-    fn try_from(params: &UserLogsPath) -> Result<Self, Self::Error> {
-        Ok(Self {
-            year: params.year.parse()?,
-            month: params.month.parse()?,
-        })
-    }
 }
 
 #[derive(Serialize, JsonSchema)]

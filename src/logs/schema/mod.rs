@@ -1,32 +1,21 @@
 pub mod message;
 
-use chrono::{DateTime, Datelike, Utc};
+use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::web::schema::LogsParams;
 
 #[derive(Deserialize, JsonSchema)]
-pub struct ChannelLogParams {
+pub struct LogRangeParams {
     #[schemars(with = "String")]
+    /// RFC 3339 start date
     pub from: DateTime<Utc>,
     #[schemars(with = "String")]
+    /// RFC 3339 end date
     pub to: DateTime<Utc>,
     #[serde(flatten)]
     pub logs_params: LogsParams,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub struct UserLogDate {
-    pub year: u32,
-    pub month: u32,
-}
-
-impl UserLogDate {
-    pub fn is_current_month(&self) -> bool {
-        let current = Utc::now().date_naive();
-        current.year() as u32 == self.year && current.month() == self.month
-    }
 }
 
 #[derive(Deserialize)]
