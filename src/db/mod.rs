@@ -44,41 +44,27 @@ pub async fn read_channel(
 
         let mut streams = Vec::with_capacity(1);
 
-        if params.logs_params.reverse {
-            let mut current_to = params.to;
-            let mut current_from = current_to - interval;
+        let mut current_from = params.from;
+        let mut current_to = current_from + interval;
 
-            loop {
-                let cursor = next_cursor(db, &query, channel_id, current_from, current_to)?;
+        loop {
+            let cursor = next_cursor(db, &query, channel_id, current_from, current_to)?;
+            streams.push(cursor);
+
+            current_from += interval;
+            current_to += interval;
+
+            if current_to > params.to {
+                let cursor = next_cursor(db, &query, channel_id, current_from, params.to)?;
                 streams.push(cursor);
-
-                current_from -= interval;
-                current_to -= interval;
-
-                if current_from > params.from {
-                    let cursor = next_cursor(db, &query, channel_id, params.from, current_to)?;
-                    streams.push(cursor);
-                    break;
-                }
-            }
-        } else {
-            let mut current_from = params.from;
-            let mut current_to = current_from + interval;
-
-            loop {
-                let cursor = next_cursor(db, &query, channel_id, current_from, current_to)?;
-                streams.push(cursor);
-
-                current_from += interval;
-                current_to += interval;
-
-                if current_to > params.to {
-                    let cursor = next_cursor(db, &query, channel_id, current_from, params.to)?;
-                    streams.push(cursor);
-                    break;
-                }
+                break;
             }
         }
+
+        if params.logs_params.reverse {
+            streams.reverse();
+        }
+
         debug!("Using {} queries for multi-query stream", streams.len());
 
         LogsStream::new_multi_query(streams)
