@@ -15,7 +15,12 @@ use aide::{
     openapi::OpenApi,
     redoc::Redoc,
 };
-use axum::{middleware, response::IntoResponse, Extension, Json, ServiceExt};
+use axum::{
+    http::Request,
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
+    Extension, Json, ServiceExt,
+};
 use axum_prometheus::PrometheusMetricLayerBuilder;
 use prometheus::TextEncoder;
 use std::{
@@ -29,6 +34,8 @@ use tower_http::{
     trace::TraceLayer, CompressionLevel,
 };
 use tracing::{debug, info};
+
+const CAPABILITIES: &[&str] = &["arbitrary-range-query"];
 
 pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessage>) {
     aide::gen::on_error(|error| {
@@ -131,10 +138,12 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
             }),
         )
         .api_route("/optout", post(handlers::optout))
+        .api_route("/capabilities", get(capabilities))
         .route("/docs", Redoc::new("/openapi.json").axum_route())
         .route("/openapi.json", get(serve_openapi))
         .route("/assets/*asset", get(frontend::static_asset))
         .fallback(frontend::static_asset)
+        .layer(middleware::from_fn(capabilities_header_middleware))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace_layer::make_span_with)
@@ -171,6 +180,19 @@ pub fn parse_listen_addr(addr: &str) -> Result<SocketAddr, AddrParseError> {
     } else {
         SocketAddr::from_str(addr)
     }
+}
+
+async fn capabilities() -> Json<Vec<&'static str>> {
+    Json(CAPABILITIES.to_vec())
+}
+
+async fn capabilities_header_middleware<B>(request: Request<B>, next: Next<B>) -> Response {
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(
+        "x-rustlog-capabilities",
+        CAPABILITIES.join(",").try_into().unwrap(),
+    );
+    response
 }
 
 async fn metrics() -> impl IntoApiResponse {
