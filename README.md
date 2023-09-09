@@ -36,15 +36,59 @@ services:
 
 ### From source
 
-- Set up Clickhouse
-- `cargo install --locked --git https://github.com/boring-nick/rustlog`
-- You can now run the `rustlog` binary
+- Follow the [Contributing](Contributing) excluding the last step
+- `cargo build --release`
+- The resulting binary will be at `target/release/rustlog`
 
 ## Advantages over justlog
 
 - Significantly better storage efficiency (2x+ improvement) thanks to not duplicating log files and better compression (using ZSTD in Clickhouse)
 - Blazing fast log queries with response streaming and a [highly performant IRC parser](https://github.com/jprochazk/twitch-rs)
 - Support for ndjson logs responses
+
+## Contributing
+
+Requirements:
+- rust
+- yarn
+- docker with docker-compose (optional, will need to set up Clickhouse manually without it)
+
+Steps:
+
+0. Clone the repository (make sure to include submodules!):
+```
+git clone --recursive https://github.com/boring-nick/rustlog
+```
+If you already cloned the repo without `--recursive`, you can initialize submodules with:
+```
+git submodule update --init --recursive
+```
+
+1. Set up the database (Clickhouse):
+
+This repository provides a docker-compose to quickly set up Clickhouse. You can use it with:
+```
+docker-compose -f docker-compose.dev.yml up -d
+```
+Alternatively, you can install Clickhouse manually using the [official guide](https://clickhouse.com/docs/en/install).
+
+2. Create a config file
+
+Copy `config.dist.json` to `config.json` and configure your database and twitch credentials. If you installed Clickhouse with Docker, the default database configuration works.
+
+3. Build the frontend:
+```
+cd web
+yarn install
+yarn build
+cd ..
+```
+4. Build and run rustlog:
+```
+cargo run
+```
+
+You can now access rustlog at http://localhost:8025.
 
 ## Migrating from justlog
 See [MIGRATION.md](./docs/MIGRATION.md)
