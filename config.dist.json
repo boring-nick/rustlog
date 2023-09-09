@@ -1,5 +1,5 @@
 {
-  "clickhouseUrl": "http://clickhouse:8123",
+  "clickhouseUrl": "http://localhost:8123",
   "clickhouseDb": "rustlog",
   "clickhouseUsername": null,
   "clickhousePassword": null,
