@@ -1,0 +1,15 @@
+version: "3.8"
+  
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    volumes:
+      - "rustlog_ch_data:/var/lib/clickhouse:rw"
+    environment:
+      CLICKHOUSE_DB: "rustlog"
+    ports:
+      - 8123:8123
+      - 9000:9000
+
+volumes:
+  rustlog_ch_data:
