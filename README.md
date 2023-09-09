@@ -36,9 +36,9 @@ services:
 
 ### From source
 
-- Set up Clickhouse
-- `cargo install --locked --git https://github.com/boring-nick/rustlog`
-- You can now run the `rustlog` binary
+- Follow the [Contributing](Contributing) excluding the last step
+- `cargo build --release`
+- The resulting binary will be at `target/release/rustlog`
 
 ## Advantages over justlog
 
