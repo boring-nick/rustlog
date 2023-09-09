@@ -74,13 +74,14 @@ Alternatively, you can install Clickhouse manually using the [official guide](ht
 
 2. Create a config file
 
-Copy `config.dist.json` to `config.json` and configure your database and twitch credentials.
+Copy `config.dist.json` to `config.json` and configure your database and twitch credentials. If you installed Clickhouse with Docker, the default database configuration works.
 
 3. Build the frontend:
 ```
 cd web
 yarn install
 yarn build
+cd ..
 ```
 4. Build and run rustlog:
 ```

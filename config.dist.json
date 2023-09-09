@@ -8,6 +8,5 @@
   "clientID": "id",
   "clientSecret": "secret",
   "admins": [],
-  "optOut": {},
-  "adminAPIKey": "verysecurekey"
+  "optOut": {}
 }
