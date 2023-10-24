@@ -127,12 +127,12 @@ impl App {
 
     pub fn check_opted_out(&self, channel_id: &str, user_id: Option<&str>) -> Result<()> {
         if self.config.opt_out.contains_key(channel_id) {
-            return Err(Error::OptedOut);
+            return Err(Error::ChannelOptedOut);
         }
 
         if let Some(user_id) = user_id {
             if self.config.opt_out.contains_key(user_id) {
-                return Err(Error::OptedOut);
+                return Err(Error::UserOptedOut);
             }
         }
 
