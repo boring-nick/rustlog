@@ -84,14 +84,7 @@ impl OperationOutput for Error {
                 (
                     Some(403),
                     aide::openapi::Response {
-                        description: Error::ChannelOptedOut.to_string(),
-                        ..res.clone()
-                    },
-                ),
-                (
-                    Some(403),
-                    aide::openapi::Response {
-                        description: Error::UserOptedOut.to_string(),
+                        description: "Channel or user has opted out".to_owned(),
                         ..res.clone()
                     },
                 ),
