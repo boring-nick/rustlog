@@ -122,7 +122,10 @@ impl Migrator {
                                 .unwrap();
                             let day_bytes = migrator
                                 .migrate_day(&root_path, &channel_id, date, &mut inserter)
-                                .await?;
+                                .await
+                                .with_context(|| {
+                                    format!("Could not migrate channel {channel_id} date {date}")
+                                })?;
 
                             total_read_bytes.fetch_add(day_bytes as u64, Ordering::SeqCst);
                             let processed_bytes = total_read_bytes.load(Ordering::SeqCst);
@@ -213,10 +216,12 @@ impl Migrator {
     ) -> anyhow::Result<usize> {
         let mut read_bytes = 0;
 
-        for line in reader.lines() {
-            let line = line?;
+        for (i, line) in reader.lines().enumerate() {
+            let line = line.with_context(|| format!("Could not read line {i} from input"))?;
             read_bytes += line.len() + 1; // Add 1 byte for newline symbol
-            write_line(channel_id, line, inserter, datetime).await?;
+            write_line(channel_id, line, inserter, datetime)
+                .await
+                .with_context(|| format!("Could not write line {i} to inserter"))?;
         }
 
         let stats = inserter.commit().await?;

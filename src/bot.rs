@@ -1,6 +1,6 @@
 use crate::{
     app::App,
-    db::{delete_user_logs, schema::Message},
+    db::schema::Message,
     logs::extract::{extract_channel_and_user_from_raw, extract_raw_timestamp},
     ShutdownRx,
 };
@@ -242,7 +242,7 @@ impl Bot {
                         .await?
                 }
                 "optout" => {
-                    self.optout_user(&args, sender_id).await?;
+                    self.optout_user(&args, sender_login, sender_id).await?;
                 }
                 _ => (),
             }
@@ -251,16 +251,22 @@ impl Bot {
         Ok(())
     }
 
-    async fn optout_user(&self, args: &[&str], sender_id: &str) -> anyhow::Result<()> {
-        let code = args.first().context("No optout code provided")?;
-        if self.app.optout_codes.remove(*code).is_some() {
-            delete_user_logs(&self.app.db, sender_id)
-                .await
-                .context("Could not delete logs")?;
+    async fn optout_user(
+        &self,
+        args: &[&str],
+        sender_login: &str,
+        sender_id: &str,
+    ) -> anyhow::Result<()> {
+        let arg = args.first().context("No optout code provided")?;
+        if self.app.optout_codes.remove(*arg).is_some() {
+            self.app.optout_user(sender_id).await?;
 
-            self.app.config.opt_out.insert(sender_id.to_owned(), true);
-            self.app.config.save()?;
-            info!("User {sender_id} opted out");
+            Ok(())
+        } else if self.check_admin(sender_login).is_ok() {
+            let user_id = self.app.get_user_id_by_name(arg).await?;
+
+            self.app.optout_user(&user_id).await?;
+
             Ok(())
         } else {
             Err(anyhow!("Invalid optout code"))

@@ -1,4 +1,10 @@
 use crate::{app::App, bot::BotMessage, error::Error};
+use aide::{
+    openapi::{
+        HeaderStyle, Parameter, ParameterData, ParameterSchemaOrContent, ReferenceOr, SchemaObject,
+    },
+    transform::TransformOperation,
+};
 use axum::{
     extract::State,
     http::Request,
@@ -29,6 +35,31 @@ pub async fn admin_auth<B>(
     }
 
     Err((StatusCode::FORBIDDEN, "No, I don't think so"))
+}
+
+pub fn admin_auth_doc(op: &mut TransformOperation) {
+    let schema = aide::gen::in_context(|ctx| ctx.schema.subschema_for::<String>());
+
+    op.inner_mut()
+        .parameters
+        .push(ReferenceOr::Item(Parameter::Header {
+            parameter_data: ParameterData {
+                name: "X-Api-Key".to_owned(),
+                description: Some("Configured admin API key".to_owned()),
+                required: true,
+                deprecated: None,
+                format: ParameterSchemaOrContent::Schema(SchemaObject {
+                    json_schema: schema,
+                    external_docs: None,
+                    example: None,
+                }),
+                example: None,
+                examples: Default::default(),
+                explode: None,
+                extensions: Default::default(),
+            },
+            style: HeaderStyle::Simple,
+        }));
 }
 
 #[derive(Deserialize, JsonSchema)]

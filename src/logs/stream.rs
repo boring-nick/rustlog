@@ -17,6 +17,10 @@ pub enum LogsStream {
         cursor: RowCursor<String>,
         first_item: Option<String>,
     },
+    MultiQuery {
+        cursors: Vec<RowCursor<String>>,
+        current: usize,
+    },
     Provided(Iter<IntoIter<String>>),
 }
 
@@ -37,6 +41,17 @@ impl LogsStream {
             Ok(Self::Provided(stream::iter(iter)))
         }
     }
+
+    pub fn new_multi_query(cursors: Vec<RowCursor<String>>) -> Result<Self> {
+        // if streams.is_empty() {
+        //     return Err(Error::NotFound);
+        // }
+
+        Ok(Self::MultiQuery {
+            cursors,
+            current: 0,
+        })
+    }
 }
 
 impl Stream for LogsStream {
@@ -55,6 +70,23 @@ impl Stream for LogsStream {
                 }
             }
             LogsStream::Provided(iter) => Pin::new(iter).poll_next(cx).map(|item| item.map(Ok)),
+            LogsStream::MultiQuery { cursors, current } => match cursors.get_mut(*current) {
+                Some(cursor) => {
+                    let next_line_poll = {
+                        let fut = cursor.next();
+                        pin!(fut);
+                        fut.poll(cx)
+                    };
+
+                    if let Poll::Ready(Ok(None)) = next_line_poll {
+                        *current += 1;
+                        self.poll_next(cx)
+                    } else {
+                        next_line_poll.map(|result| result.map_err(|err| err.into()).transpose())
+                    }
+                }
+                None => Poll::Ready(None),
+            },
         }
     }
 }

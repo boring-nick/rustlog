@@ -6,58 +6,126 @@ pub use migrations::run as setup_db;
 
 use crate::{
     error::Error,
-    logs::{
-        schema::{ChannelLogDate, UserLogDate},
-        stream::LogsStream,
-    },
+    logs::{schema::LogRangeParams, stream::LogsStream},
     web::schema::AvailableLogDate,
     Result,
 };
-use chrono::{Datelike, NaiveDateTime};
-use clickhouse::Client;
+use chrono::{DateTime, Datelike, Duration, NaiveDateTime, Utc};
+use clickhouse::{query::RowCursor, Client};
 use rand::{seq::IteratorRandom, thread_rng};
-use tracing::info;
+use tracing::{debug, info};
+
+const CHANNEL_MULTI_QUERY_SIZE_DAYS: i64 = 14;
 
 pub async fn read_channel(
     db: &Client,
     channel_id: &str,
-    log_date: ChannelLogDate,
-    reverse: bool,
-    limit: Option<u64>,
-    offset: Option<u64>,
+    params: &LogRangeParams,
 ) -> Result<LogsStream> {
-    let suffix = if reverse { "DESC" } else { "ASC" };
-    let mut query = format!("SELECT raw FROM message WHERE channel_id = ? AND toStartOfDay(timestamp) = ? ORDER BY timestamp {suffix}");
-    apply_limit_offset(&mut query, limit, offset);
+    let suffix = if params.logs_params.reverse {
+        "DESC"
+    } else {
+        "ASC"
+    };
 
+    let mut query = format!("SELECT raw FROM message WHERE channel_id = ? AND timestamp >= ? AND timestamp < ? ORDER BY timestamp {suffix}");
+
+    let interval = Duration::days(CHANNEL_MULTI_QUERY_SIZE_DAYS);
+    if params.to - params.from > interval {
+        let count = db
+            .query("SELECT count() FROM (SELECT timestamp FROM message WHERE channel_id = ? AND timestamp >= ? AND timestamp < ? LIMIT 1)")
+            .bind(channel_id)
+            .bind(params.from.timestamp_millis() as f64 / 1000.0)
+            .bind(params.to.timestamp_millis() as f64 / 1000.0)
+            .fetch_one::<i32>().await?;
+        if count == 0 {
+            return Err(Error::NotFound);
+        }
+
+        let mut streams = Vec::with_capacity(1);
+
+        let mut current_from = params.from;
+        let mut current_to = current_from + interval;
+
+        loop {
+            let cursor = next_cursor(db, &query, channel_id, current_from, current_to)?;
+            streams.push(cursor);
+
+            current_from += interval;
+            current_to += interval;
+
+            if current_to > params.to {
+                let cursor = next_cursor(db, &query, channel_id, current_from, params.to)?;
+                streams.push(cursor);
+                break;
+            }
+        }
+
+        if params.logs_params.reverse {
+            streams.reverse();
+        }
+
+        debug!("Using {} queries for multi-query stream", streams.len());
+
+        LogsStream::new_multi_query(streams)
+    } else {
+        apply_limit_offset(
+            &mut query,
+            params.logs_params.limit,
+            params.logs_params.offset,
+        );
+
+        let cursor = db
+            .query(&query)
+            .bind(channel_id)
+            .bind(params.from.timestamp_millis() as f64 / 1000.0)
+            .bind(params.to.timestamp_millis() as f64 / 1000.0)
+            .fetch()?;
+        LogsStream::new_cursor(cursor).await
+    }
+}
+
+fn next_cursor(
+    db: &Client,
+    query: &str,
+    channel_id: &str,
+    from: DateTime<Utc>,
+    to: DateTime<Utc>,
+) -> Result<RowCursor<String>> {
     let cursor = db
-        .query(&query)
+        .query(query)
         .bind(channel_id)
-        .bind(log_date.to_string())
+        .bind(from.timestamp_millis() as f64 / 1000.0)
+        .bind(to.timestamp_millis() as f64 / 1000.0)
         .fetch()?;
-    LogsStream::new_cursor(cursor).await
+    Ok(cursor)
 }
 
 pub async fn read_user(
     db: &Client,
     channel_id: &str,
     user_id: &str,
-    log_date: UserLogDate,
-    reverse: bool,
-    limit: Option<u64>,
-    offset: Option<u64>,
+    params: &LogRangeParams,
 ) -> Result<LogsStream> {
-    let suffix = if reverse { "DESC" } else { "ASC" };
-    let mut query = format!("SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND toStartOfMonth(timestamp) = ? ORDER BY timestamp {suffix}");
-    apply_limit_offset(&mut query, limit, offset);
+    let suffix = if params.logs_params.reverse {
+        "DESC"
+    } else {
+        "ASC"
+    };
+    let mut query = format!("SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND timestamp >= ? AND timestamp < ? ORDER BY timestamp {suffix}");
+    apply_limit_offset(
+        &mut query,
+        params.logs_params.limit,
+        params.logs_params.offset,
+    );
 
     let cursor = db
         .query(&query)
         .bind(channel_id)
         .bind(user_id)
-        .bind(format!("{}-{:0>2}-1", log_date.year, log_date.month))
+        .bind(params.from.timestamp_millis() as f64 / 1000.0)
+        .bind(params.to.timestamp_millis() as f64 / 1000.0)
         .fetch()?;
-
     LogsStream::new_cursor(cursor).await
 }
 

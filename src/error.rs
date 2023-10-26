@@ -20,8 +20,10 @@ pub enum Error {
     Internal,
     #[error("Database error")]
     Clickhouse(#[from] clickhouse::error::Error),
-    #[error("User or channel has opted out")]
-    OptedOut,
+    #[error("The requested channel has opted out of being logged")]
+    ChannelOptedOut,
+    #[error("The requested user has opted out of being logged")]
+    UserOptedOut,
     #[error("Not found")]
     NotFound,
 }
@@ -35,7 +37,7 @@ impl IntoResponse for Error {
                 StatusCode::INTERNAL_SERVER_ERROR
             }
             Error::ParseInt(_) | Error::InvalidParam(_) => StatusCode::BAD_REQUEST,
-            Error::OptedOut => StatusCode::FORBIDDEN,
+            Error::ChannelOptedOut | Error::UserOptedOut => StatusCode::FORBIDDEN,
             Error::NotFound => StatusCode::NOT_FOUND,
         };
 
@@ -82,7 +84,7 @@ impl OperationOutput for Error {
                 (
                     Some(403),
                     aide::openapi::Response {
-                        description: Error::OptedOut.to_string(),
+                        description: "Channel or user has opted out".to_owned(),
                         ..res.clone()
                     },
                 ),

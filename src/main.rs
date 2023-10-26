@@ -62,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     if let Some(password) = &config.clickhouse_password {
-        db = db.with_user(password);
+        db = db.with_password(password);
     }
 
     let args = Args::parse();

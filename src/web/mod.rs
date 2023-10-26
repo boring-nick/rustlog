@@ -5,6 +5,7 @@ mod responders;
 pub mod schema;
 mod trace_layer;
 
+use self::handlers::no_cache_header;
 use crate::{app::App, bot::BotMessage, web::admin::admin_auth, ShutdownRx};
 use aide::{
     axum::{
@@ -14,7 +15,12 @@ use aide::{
     openapi::OpenApi,
     redoc::Redoc,
 };
-use axum::{middleware, response::IntoResponse, Extension, Json, ServiceExt};
+use axum::{
+    http::Request,
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
+    Extension, Json, ServiceExt,
+};
 use axum_prometheus::PrometheusMetricLayerBuilder;
 use prometheus::TextEncoder;
 use std::{
@@ -29,7 +35,7 @@ use tower_http::{
 };
 use tracing::{debug, info};
 
-use self::handlers::no_cache_header;
+const CAPABILITIES: &[&str] = &["arbitrary-range-query"];
 
 pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessage>) {
     aide::gen::on_error(|error| {
@@ -50,10 +56,12 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
     let admin_routes = ApiRouter::new()
         .api_route(
             "/channels",
-            post_with(admin::add_channels, |op| {
+            post_with(admin::add_channels, |mut op| {
+                admin::admin_auth_doc(&mut op);
                 op.tag("Admin").description("Join the specified channels")
             })
-            .delete_with(admin::remove_channels, |op| {
+            .delete_with(admin::remove_channels, |mut op| {
+                admin::admin_auth_doc(&mut op);
                 op.tag("Admin").description("Leave the specified channels")
             }),
         )
@@ -76,38 +84,38 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
         )
         .api_route(
             "/:channel_id_type/:channel",
-            get_with(handlers::redirect_to_latest_channel_logs, |op| {
-                op.description("Get latest channel logs")
+            get_with(handlers::get_channel_logs, |op| {
+                op.description("Get channel logs. If the `to` and `from` query params are not given, redirect to latest available day")
             }),
         )
         // For some reason axum considers it a path overlap if user id type is dynamic
         .api_route(
             "/:channel_id_type/:channel/user/:user",
-            get_with(handlers::redirect_to_latest_user_name_logs, |op| {
-                op.description("Get latest user logs")
+            get_with(handlers::get_user_logs_by_name, |op| {
+                op.description("Get user logs by name. If the `to` and `from` query params are not given, redirect to latest available month")
             }),
         )
         .api_route(
             "/:channel_id_type/:channel/userid/:user",
-            get_with(handlers::redirect_to_latest_user_id_logs, |op| {
-                op.description("Get latest user logs")
+            get_with(handlers::get_user_logs_id, |op| {
+                op.description("Get user logs by id. If the `to` and `from` query params are not given, redirect to latest available month")
             }),
         )
         .api_route(
             "/:channel_id_type/:channel/:year/:month/:day",
-            get_with(handlers::get_channel_logs, |op| {
+            get_with(handlers::get_channel_logs_by_date, |op| {
                 op.description("Get channel logs from the given day")
             }),
         )
         .api_route(
             "/:channel_id_type/:channel/user/:user/:year/:month",
-            get_with(handlers::get_user_logs_by_name, |op| {
+            get_with(handlers::get_user_logs_by_date_name, |op| {
                 op.description("Get user logs in a channel from the given month")
             }),
         )
         .api_route(
             "/:channel_id_type/:channel/userid/:user/:year/:month",
-            get_with(handlers::get_user_logs_by_id, |op| {
+            get_with(handlers::get_user_logs_by_date_id, |op| {
                 op.description("Get user logs in a channel from the given month")
             }),
         )
@@ -130,10 +138,12 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
             }),
         )
         .api_route("/optout", post(handlers::optout))
+        .api_route("/capabilities", get(capabilities))
         .route("/docs", Redoc::new("/openapi.json").axum_route())
         .route("/openapi.json", get(serve_openapi))
         .route("/assets/*asset", get(frontend::static_asset))
         .fallback(frontend::static_asset)
+        .layer(middleware::from_fn(capabilities_header_middleware))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(trace_layer::make_span_with)
@@ -170,6 +180,19 @@ pub fn parse_listen_addr(addr: &str) -> Result<SocketAddr, AddrParseError> {
     } else {
         SocketAddr::from_str(addr)
     }
+}
+
+async fn capabilities() -> Json<Vec<&'static str>> {
+    Json(CAPABILITIES.to_vec())
+}
+
+async fn capabilities_header_middleware<B>(request: Request<B>, next: Next<B>) -> Response {
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(
+        "x-rustlog-capabilities",
+        CAPABILITIES.join(",").try_into().unwrap(),
+    );
+    response
 }
 
 async fn metrics() -> impl IntoApiResponse {

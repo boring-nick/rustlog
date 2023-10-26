@@ -1,41 +1,21 @@
 pub mod message;
 
-use chrono::{Datelike, NaiveDate, Utc};
+use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
-use std::fmt::Display;
+use serde::Deserialize;
 
-#[derive(Serialize, Deserialize, Debug, JsonSchema, Clone, Copy)]
-pub struct ChannelLogDate {
-    pub year: u32,
-    pub month: u32,
-    pub day: u32,
-}
+use crate::web::schema::LogsParams;
 
-impl ChannelLogDate {
-    pub fn is_today(&self) -> bool {
-        Some(Utc::now().date_naive())
-            == NaiveDate::from_ymd_opt(self.year as i32, self.month, self.day)
-    }
-}
-
-impl Display for ChannelLogDate {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}-{:0>2}-{:0>2}", self.year, self.month, self.day)
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-pub struct UserLogDate {
-    pub year: u32,
-    pub month: u32,
-}
-
-impl UserLogDate {
-    pub fn is_current_month(&self) -> bool {
-        let current = Utc::now().date_naive();
-        current.year() as u32 == self.year && current.month() == self.month
-    }
+#[derive(Deserialize, JsonSchema)]
+pub struct LogRangeParams {
+    #[schemars(with = "String")]
+    /// RFC 3339 start date
+    pub from: DateTime<Utc>,
+    #[schemars(with = "String")]
+    /// RFC 3339 end date
+    pub to: DateTime<Utc>,
+    #[serde(flatten)]
+    pub logs_params: LogsParams,
 }
 
 #[derive(Deserialize)]
