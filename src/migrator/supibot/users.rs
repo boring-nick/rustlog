@@ -1,28 +1,54 @@
 use anyhow::{anyhow, Context};
 use serde::Deserialize;
-use std::collections::HashMap;
-use tracing::{debug, warn};
+use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
+use tracing::{debug, info, warn};
 
 #[derive(Default)]
 pub struct UsersClient {
     client: reqwest::Client,
-    users: HashMap<String, IvrUser>,
+    users: HashMap<String, String>,
     // Names mapped to ids
     names: HashMap<String, Option<String>>,
 }
 
+#[derive(Deserialize)]
+struct FileUser {
+    #[serde(rename = "Name")]
+    name: String,
+    #[serde(rename = "ID")]
+    id: String,
+}
+
 impl UsersClient {
+    pub fn add_from_file(&mut self, file_path: &Path) -> anyhow::Result<()> {
+        info!("Loading users from {file_path:?}");
+
+        let file = File::open(file_path)?;
+        let reader = BufReader::new(file);
+        let rdr = csv::Reader::from_reader(reader);
+
+        for user in rdr.into_deserialize::<FileUser>() {
+            let user = user?;
+            self.users.insert(user.id.clone(), user.name.clone());
+            self.names.insert(user.name, Some(user.id));
+        }
+
+        info!("{} users loaded", self.users.len());
+
+        Ok(())
+    }
+
     pub async fn get_users(
         &mut self,
         ids: &[impl AsRef<str>],
-    ) -> anyhow::Result<HashMap<String, IvrUser>> {
+    ) -> anyhow::Result<HashMap<String, String>> {
         let mut ids_to_request = Vec::with_capacity(ids.len());
         let mut response_users = HashMap::with_capacity(ids.len());
 
         for id in ids {
             match self.users.get(id.as_ref()) {
-                Some(user) => {
-                    response_users.insert(user.id.clone(), user.clone());
+                Some(name) => {
+                    response_users.insert(id.as_ref().to_owned(), name.clone());
                 }
                 None => {
                     ids_to_request.push(id.as_ref());
@@ -60,22 +86,20 @@ impl UsersClient {
         for result in results {
             let api_response = result?;
             for user in api_response {
-                self.users.insert(user.id.clone(), user.clone());
-                response_users.insert(user.id.clone(), user);
+                self.users.insert(user.id.clone(), user.login.clone());
+                response_users.insert(user.id.clone(), user.login);
             }
         }
-
-        if !ids_to_request.is_empty() {}
 
         Ok(response_users)
     }
 
-    pub async fn get_user(&mut self, id: &str) -> anyhow::Result<IvrUser> {
+    pub async fn get_user_login(&mut self, id: &str) -> anyhow::Result<String> {
         let users = self.get_users(&[id]).await?;
         users.into_values().next().context("Empty ivr response")
     }
 
-    pub async fn get_user_by_name(&mut self, name: &str) -> anyhow::Result<Option<IvrUser>> {
+    pub async fn get_user_id_by_name(&mut self, name: &str) -> anyhow::Result<Option<String>> {
         match self.names.get(name) {
             Some(id) => Ok(id.as_ref().map(|id| self.users.get(id).cloned().unwrap())),
             None => {
@@ -103,8 +127,8 @@ impl UsersClient {
                 match users.into_iter().next() {
                     Some(user) => {
                         self.names.insert(user.login.clone(), Some(user.id.clone()));
-                        self.users.insert(user.id.clone(), user.clone());
-                        Ok(Some(user))
+                        self.users.insert(user.id.clone(), user.login.clone());
+                        Ok(Some(user.login))
                     }
                     None => {
                         warn!("User {name} cannot be retrieved");
@@ -116,8 +140,8 @@ impl UsersClient {
         }
     }
 
-    pub fn get_cached_user(&self, id: &str) -> Option<&IvrUser> {
-        self.users.get(id)
+    pub fn get_cached_user_login(&self, id: &str) -> Option<&str> {
+        self.users.get(id).map(|s| s.as_str())
     }
 }
 

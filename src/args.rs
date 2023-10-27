@@ -27,5 +27,7 @@ pub enum Command {
         file: PathBuf,
         #[clap(short, long)]
         channel_id: String,
+        #[clap(short, long)]
+        users_file: PathBuf,
     },
 }
