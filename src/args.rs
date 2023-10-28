@@ -24,7 +24,7 @@ pub enum Command {
     },
     MigrateSupibot {
         #[clap(short, long)]
-        file: PathBuf,
+        logs_dir: PathBuf,
         #[clap(short, long)]
         users_file: PathBuf,
     },

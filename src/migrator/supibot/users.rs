@@ -96,7 +96,7 @@ impl UsersClient {
 
     pub async fn get_user_id_by_name(&mut self, name: &str) -> anyhow::Result<Option<String>> {
         match self.names.get(name) {
-            Some(id) => Ok(id.as_ref().map(|id| self.users.get(id).cloned().unwrap())),
+            Some(id) => Ok(id.clone()),
             None => {
                 debug!("Fetching info for name {name}");
                 let response = self
@@ -123,7 +123,7 @@ impl UsersClient {
                     Some(user) => {
                         self.names.insert(user.login.clone(), Some(user.id.clone()));
                         self.users.insert(user.id.clone(), user.login.clone());
-                        Ok(Some(user.login))
+                        Ok(Some(user.id))
                     }
                     None => {
                         warn!("User {name} cannot be retrieved");
