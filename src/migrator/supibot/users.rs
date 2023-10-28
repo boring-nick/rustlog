@@ -94,11 +94,6 @@ impl UsersClient {
         Ok(response_users)
     }
 
-    pub async fn get_user_login(&mut self, id: &str) -> anyhow::Result<String> {
-        let users = self.get_users(&[id]).await?;
-        users.into_values().next().context("Empty ivr response")
-    }
-
     pub async fn get_user_id_by_name(&mut self, name: &str) -> anyhow::Result<Option<String>> {
         match self.names.get(name) {
             Some(id) => Ok(id.as_ref().map(|id| self.users.get(id).cloned().unwrap())),
