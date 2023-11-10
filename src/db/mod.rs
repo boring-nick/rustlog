@@ -13,7 +13,7 @@ use crate::{
 use chrono::{DateTime, Datelike, Duration, NaiveDateTime, Utc};
 use clickhouse::{query::RowCursor, Client};
 use rand::{seq::IteratorRandom, thread_rng};
-use tracing::{debug, info};
+use tracing::debug;
 
 const CHANNEL_MULTI_QUERY_SIZE_DAYS: i64 = 14;
 
@@ -254,12 +254,12 @@ pub async fn read_random_channel_line(db: &Client, channel_id: &str) -> Result<S
     Ok(text)
 }
 
-pub async fn delete_user_logs(db: &Client, user_id: &str) -> Result<()> {
-    info!("Deleting all logs for user {user_id}");
-    db.query("ALTER TABLE message DELETE WHERE user_id = ?")
-        .bind(user_id)
-        .execute()
-        .await?;
+pub async fn delete_user_logs(_db: &Client, _user_id: &str) -> Result<()> {
+    // info!("Deleting all logs for user {user_id}");
+    // db.query("ALTER TABLE message DELETE WHERE user_id = ?")
+    //     .bind(user_id)
+    //     .execute()
+    //     .await?;
     Ok(())
 }
 
