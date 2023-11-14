@@ -56,7 +56,7 @@ impl Stream for NdJsonLogsStream {
 
                     for message_buf in serialized_messages {
                         buf.extend(message_buf);
-                        buf.push(b'\n');
+                        buf.push_str(b"\r\n");
                     }
 
                     Ok(buf)

@@ -45,7 +45,7 @@ impl IntoResponse for LogsResponse {
         match self.response_type {
             LogsResponseType::Raw => {
                 let stream = self.stream.map_ok(|mut line| {
-                    line.push('\n');
+                    line.push_str("\r\n");
                     line
                 });
 
