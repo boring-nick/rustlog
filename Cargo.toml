@@ -58,3 +58,7 @@ async-trait = "0.1.73"
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
+
+[profile.release]
+strip = true
+lto = "thin"
