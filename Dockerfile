@@ -34,7 +34,7 @@ COPY --from=frontend /src/web web/
 RUN RUSTFLAGS="$(cat /flags.txt)" cargo build --target "$(cat /target.txt)" --release
 RUN mv "./target/$(cat /target.txt)/release" "/output"
 
-FROM debian:bookworm AS runtime
+FROM debian:bookworm-slim AS runtime
 RUN useradd rustlog && mkdir /logs && chown rustlog: /logs
 COPY --from=builder /output/rustlog /usr/local/bin/
 USER rustlog
