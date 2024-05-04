@@ -4,7 +4,7 @@ COPY web .
 RUN yarn install --ignore-optional
 RUN yarn build
 
-FROM --platform=$BUILDPLATFORM rust:1.74-bookworm AS chef
+FROM --platform=$BUILDPLATFORM rust:1.77-bookworm AS chef
 USER root
 ENV CARGO_PROFILE_RELEASE_LTO=true
 RUN cargo install cargo-chef
