@@ -16,7 +16,7 @@ use aide::{
     redoc::Redoc,
 };
 use axum::{
-    http::Request,
+    extract::Request,
     middleware::{self, Next},
     response::{IntoResponse, Response},
     Extension, Json, ServiceExt,
@@ -28,7 +28,7 @@ use std::{
     str::FromStr,
     sync::Arc,
 };
-use tokio::sync::mpsc::Sender;
+use tokio::{net::TcpListener, sync::mpsc::Sender};
 use tower_http::{
     compression::CompressionLayer, cors::CorsLayer, normalize_path::NormalizePath,
     trace::TraceLayer, CompressionLevel,
@@ -164,8 +164,11 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
 
     info!("Listening on {listen_address}");
 
-    axum::Server::bind(&listen_address)
-        .serve(app.into_make_service())
+    let listener = TcpListener::bind(&listen_address)
+        .await
+        .expect("Could not create TCP listener");
+
+    axum::serve(listener, ServiceExt::<Request>::into_make_service(app))
         .with_graceful_shutdown(async move {
             shutdown_rx.changed().await.ok();
             debug!("Shutting down web task");
@@ -186,7 +189,7 @@ async fn capabilities() -> Json<Vec<&'static str>> {
     Json(CAPABILITIES.to_vec())
 }
 
-async fn capabilities_header_middleware<B>(request: Request<B>, next: Next<B>) -> Response {
+async fn capabilities_header_middleware(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     response.headers_mut().insert(
         "x-rustlog-capabilities",

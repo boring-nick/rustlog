@@ -5,7 +5,7 @@ use serde::Serialize;
 use serde_repr::Serialize_repr;
 use std::fmt::Display;
 use strum::EnumString;
-use twitch::{Command, Tag};
+use tmi::{Command, Tag};
 
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
@@ -36,7 +36,7 @@ pub enum MessageType {
 }
 
 impl<'a> ResponseMessage<'a> for FullMessage<'a> {
-    fn from_irc_message(irc_message: &'a twitch::Message) -> anyhow::Result<Self> {
+    fn from_irc_message(irc_message: &'a tmi::IrcMessageRef<'_>) -> anyhow::Result<Self> {
         let channel = irc_message
             .channel()
             .context("Missing channel")?
@@ -60,7 +60,7 @@ impl<'a> ResponseMessage<'a> for FullMessage<'a> {
                     r#type: MessageType::PrivMsg,
                 })
             }
-            Command::Clearchat => {
+            Command::ClearChat => {
                 let username = irc_message.params().unwrap_or_default();
 
                 Ok(Self {
@@ -117,8 +117,9 @@ mod tests {
     #[test]
     fn parse_old_message() {
         let data = "@badges=;color=;display-name=Snusbot;emotes=;mod=0;room-id=22484632;subscriber=0;tmi-sent-ts=1489263601000;turbo=0;user-id=62541963;user-type= :snusbot!snusbot@snusbot.tmi.twitch.tv PRIVMSG #forsen :prasoc won 10 points in roulette and now has 2838 points! forsenPls";
-        let irc_message = twitch::Message::parse(data).unwrap();
-        let message = FullMessage::from_irc_message(&irc_message).unwrap();
+        let irc_message = tmi::IrcMessage::parse(data).unwrap();
+        let irc_message_ref = irc_message.as_ref();
+        let message = FullMessage::from_irc_message(&irc_message_ref).unwrap();
         let expected_message = FullMessage {
             basic: BasicMessage {
                 text: Cow::Borrowed(

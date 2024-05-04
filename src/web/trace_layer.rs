@@ -1,12 +1,8 @@
-use axum::{
-    body::{Body, BoxBody},
-    http::Request,
-    response::Response,
-};
+use axum::{extract::Request, response::Response};
 use std::time::Duration;
 use tracing::{info, info_span, Span};
 
-pub fn make_span_with(request: &Request<Body>) -> Span {
+pub fn make_span_with(request: &Request) -> Span {
     let method = request.method().to_string();
     let url = request.uri().to_string();
 
@@ -17,7 +13,7 @@ pub fn make_span_with(request: &Request<Body>) -> Span {
     )
 }
 
-pub fn on_response(response: &Response<BoxBody>, latency: Duration, span: &Span) {
+pub fn on_response(response: &Response, latency: Duration, span: &Span) {
     let status = response.status();
     let ms = latency.as_millis();
 

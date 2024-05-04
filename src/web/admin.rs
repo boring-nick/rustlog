@@ -6,8 +6,7 @@ use aide::{
     transform::TransformOperation,
 };
 use axum::{
-    extract::State,
-    http::Request,
+    extract::{Request, State},
     middleware::Next,
     response::{IntoResponse, Response},
     Extension, Json,
@@ -17,10 +16,10 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use tokio::sync::mpsc::Sender;
 
-pub async fn admin_auth<B>(
+pub async fn admin_auth(
     app: State<App>,
-    request: Request<B>,
-    next: Next<B>,
+    request: Request,
+    next: Next,
 ) -> Result<Response, impl IntoResponse> {
     if let Some(admin_key) = &app.config.admin_api_key {
         if request

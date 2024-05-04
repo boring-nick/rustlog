@@ -4,7 +4,7 @@ use reqwest::StatusCode;
 use std::num::ParseIntError;
 use thiserror::Error;
 use tracing::error;
-use twitch_api2::helix::ClientRequestError;
+use twitch_api::helix::ClientRequestError;
 
 #[derive(Error, Debug)]
 pub enum Error {

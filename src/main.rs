@@ -32,7 +32,7 @@ use tokio::{
 };
 use tracing::{debug, info};
 use tracing_subscriber::EnvFilter;
-use twitch_api2::{
+use twitch_api::{
     twitch_oauth2::{AppAccessToken, Scope},
     HelixClient,
 };

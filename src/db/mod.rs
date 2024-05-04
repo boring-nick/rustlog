@@ -10,7 +10,7 @@ use crate::{
     web::schema::AvailableLogDate,
     Result,
 };
-use chrono::{DateTime, Datelike, Duration, NaiveDateTime, Utc};
+use chrono::{DateTime, Datelike, Duration, Utc};
 use clickhouse::{query::RowCursor, Client};
 use rand::{seq::IteratorRandom, thread_rng};
 use tracing::debug;
@@ -143,8 +143,7 @@ pub async fn read_available_channel_logs(
     let dates = timestamps
         .into_iter()
         .map(|timestamp| {
-            let naive =
-                NaiveDateTime::from_timestamp_opt(timestamp.into(), 0).expect("Invalid DateTime");
+            let naive = DateTime::from_timestamp(timestamp.into(), 0).expect("Invalid DateTime");
 
             AvailableLogDate {
                 year: naive.year().to_string(),
@@ -171,8 +170,7 @@ pub async fn read_available_user_logs(
     let dates = timestamps
         .into_iter()
         .map(|timestamp| {
-            let naive =
-                NaiveDateTime::from_timestamp_opt(timestamp.into(), 0).expect("Invalid DateTime");
+            let naive = DateTime::from_timestamp(timestamp.into(), 0).expect("Invalid DateTime");
 
             AvailableLogDate {
                 year: naive.year().to_string(),
