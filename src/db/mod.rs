@@ -252,14 +252,14 @@ pub async fn read_random_channel_line(db: &Client, channel_id: &str) -> Result<S
     Ok(text)
 }
 
-pub async fn delete_user_logs(_db: &Client, _user_id: &str) -> Result<()> {
+//pub async fn delete_user_logs(_db: &Client, _user_id: &str) -> Result<()> {
     // info!("Deleting all logs for user {user_id}");
     // db.query("ALTER TABLE message DELETE WHERE user_id = ?")
     //     .bind(user_id)
     //     .execute()
     //     .await?;
-    Ok(())
-}
+//    Ok(())
+//}
 
 fn apply_limit_offset(query: &mut String, limit: Option<u64>, offset: Option<u64>) {
     if let Some(limit) = limit {

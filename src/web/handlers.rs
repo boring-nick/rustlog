@@ -369,25 +369,25 @@ async fn random_user_line(
     Ok((no_cache_header(), logs))
 }
 
-pub async fn optout(app: State<App>) -> Json<String> {
-    let mut rng = thread_rng();
-    let optout_code: String = (0..5).map(|_| rng.sample(Alphanumeric) as char).collect();
+// pub async fn optout(app: State<App>) -> Json<String> {
+//     let mut rng = thread_rng();
+//     let optout_code: String = (0..5).map(|_| rng.sample(Alphanumeric) as char).collect();
 
-    app.optout_codes.insert(optout_code.clone());
+//     app.optout_codes.insert(optout_code.clone());
 
-    {
-        let codes = app.optout_codes.clone();
-        let optout_code = optout_code.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(Duration::from_secs(60)).await;
-            if codes.remove(&optout_code).is_some() {
-                debug!("Dropping optout code {optout_code}");
-            }
-        });
-    }
+//     {
+//         let codes = app.optout_codes.clone();
+//         let optout_code = optout_code.clone();
+//         tokio::spawn(async move {
+//             tokio::time::sleep(Duration::from_secs(60)).await;
+//             if codes.remove(&optout_code).is_some() {
+//                 debug!("Dropping optout code {optout_code}");
+//             }
+//         });
+//     }
 
-    Json(optout_code)
-}
+//     Json(optout_code)
+// }
 
 fn cache_header(secs: u64) -> TypedHeader<CacheControl> {
     TypedHeader(
