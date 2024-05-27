@@ -79,7 +79,10 @@ impl Bot {
             loop {
                 let channel_ids = app.config.channels.read().unwrap().clone();
 
-                let interval = match app.get_users(Vec::from_iter(channel_ids), vec![]).await {
+                let interval = match app
+                    .get_users(Vec::from_iter(channel_ids), vec![], Some(true))
+                    .await
+                {
                     Ok(users) => {
                         info!("Joining {} channels", users.len());
                         for channel_login in users.into_values() {
@@ -285,7 +288,11 @@ impl Bot {
 
         let channels = self
             .app
-            .get_users(vec![], channels.iter().map(ToString::to_string).collect())
+            .get_users(
+                vec![],
+                channels.iter().map(ToString::to_string).collect(),
+                None,
+            )
             .await?;
 
         {
