@@ -29,12 +29,14 @@ pub async fn run(
     config: Config,
     db: clickhouse::Client,
     logs_path: &Path,
-    users_file_path: &Path,
+    users_file_path: Option<&Path>,
 ) -> anyhow::Result<()> {
     let mut users_client = UsersClient::default();
-    users_client
-        .add_from_file(users_file_path)
-        .context("Could not read the users file")?;
+    if let Some(path) = users_file_path {
+        users_client
+            .add_from_file(path)
+            .context("Could not read the users file")?;
+    }
 
     let read_dir = std::fs::read_dir(logs_path)?;
 

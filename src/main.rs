@@ -85,7 +85,7 @@ async fn main() -> anyhow::Result<()> {
         Some(Command::MigrateSupibot {
             logs_dir,
             users_file,
-        }) => migrator::supibot::run(config, db, &logs_dir, &users_file).await,
+        }) => migrator::supibot::run(config, db, &logs_dir, users_file.as_deref()).await,
     }
 }
 

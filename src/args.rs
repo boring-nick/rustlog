@@ -26,6 +26,6 @@ pub enum Command {
         #[clap(short, long)]
         logs_dir: PathBuf,
         #[clap(short, long)]
-        users_file: PathBuf,
+        users_file: Option<PathBuf>,
     },
 }

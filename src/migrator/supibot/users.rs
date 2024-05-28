@@ -1,7 +1,12 @@
 use anyhow::{anyhow, Context};
 use serde::Deserialize;
-use std::{collections::HashMap, fs::File, io::BufReader, path::Path};
-use tracing::{debug, info, warn};
+use std::{
+    collections::{hash_map::Entry, HashMap, HashSet},
+    fs::File,
+    io::BufReader,
+    path::Path,
+};
+use tracing::{debug, info, trace, warn};
 
 #[derive(Default)]
 pub struct UsersClient {
@@ -27,13 +32,43 @@ impl UsersClient {
         let reader = BufReader::new(file);
         let rdr = csv::Reader::from_reader(reader);
 
+        let mut duplicate_names = HashSet::new();
+        let mut duplicate_ids = HashSet::new();
+
         for user in rdr.into_deserialize::<FileUser>() {
             let user = user?;
-            self.users.insert(user.id.clone(), user.name.clone());
-            self.names.insert(user.name, Some(user.id));
+
+            if !duplicate_ids.contains(&user.id) {
+                match self.users.entry(user.id.clone()) {
+                    Entry::Occupied(o) => {
+                        let (id, _) = o.remove_entry();
+                        duplicate_ids.insert(id);
+                    }
+                    Entry::Vacant(v) => {
+                        v.insert(user.name.clone());
+                    }
+                }
+            }
+
+            if !duplicate_names.contains(&user.name) {
+                match self.names.entry(user.name) {
+                    Entry::Occupied(o) => {
+                        let (name, _) = o.remove_entry();
+                        duplicate_names.insert(name);
+                    }
+                    Entry::Vacant(v) => {
+                        v.insert(Some(user.id));
+                    }
+                }
+            }
         }
 
-        info!("{} users loaded", self.users.len());
+        info!(
+            "{} users loaded ({} duplicate names, {} duplicate ids)",
+            self.users.len(),
+            duplicate_names.len(),
+            duplicate_ids.len()
+        );
 
         Ok(())
     }
@@ -58,6 +93,7 @@ impl UsersClient {
 
         let request_futures = ids_to_request.chunks(50).map(|chunk| {
             debug!("Requesting a chunk of {} users", chunk.len());
+            trace!("{chunk:?}");
 
             async {
                 let response = self
@@ -78,7 +114,7 @@ impl UsersClient {
             }
         });
         // let results = join_all(request_futures).await;
-        let mut results = Vec::new();
+        let mut results = Vec::with_capacity(request_futures.len());
         for future in request_futures {
             results.push(future.await);
         }
