@@ -4,7 +4,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use schemars::JsonSchema;
 use serde::Serialize;
 use std::{borrow::Cow, collections::HashMap};
-use twitch::{Command, Tag};
+use tmi::{Command, Tag};
 
 use super::ResponseMessage;
 
@@ -20,7 +20,7 @@ pub struct BasicMessage<'a> {
 }
 
 impl<'a> ResponseMessage<'a> for BasicMessage<'a> {
-    fn from_irc_message(irc_message: &'a twitch::Message) -> anyhow::Result<Self> {
+    fn from_irc_message(irc_message: &'a tmi::IrcMessageRef<'_>) -> anyhow::Result<Self> {
         let raw_timestamp = irc_message
             .tag(Tag::TmiSentTs)
             .context("Missing timestamp tag")?
@@ -33,9 +33,7 @@ impl<'a> ResponseMessage<'a> for BasicMessage<'a> {
 
         let response_tags = irc_message
             .tags()
-            .unwrap_or_default()
-            .iter()
-            .map(|(key, value)| (key.as_str(), Cow::Borrowed(*value)))
+            .map(|(key, value)| (key.as_str(), Cow::Borrowed(value)))
             .collect();
 
         match irc_message.command() {
@@ -56,7 +54,7 @@ impl<'a> ResponseMessage<'a> for BasicMessage<'a> {
                     tags: response_tags,
                 })
             }
-            Command::Clearchat => {
+            Command::ClearChat => {
                 let mut username = None;
 
                 let text = match irc_message.params() {
@@ -90,7 +88,7 @@ impl<'a> ResponseMessage<'a> for BasicMessage<'a> {
                 let system_message = irc_message
                     .tag(Tag::SystemMsg)
                     .context("System message tag missing")?;
-                let system_message = twitch::unescape(system_message);
+                let system_message = tmi::unescape(system_message);
 
                 let text = if let Some(user_message) = irc_message.params() {
                     let user_message = extract_message_text(user_message);
@@ -106,7 +104,7 @@ impl<'a> ResponseMessage<'a> for BasicMessage<'a> {
 
                 let response_tags = response_tags
                     .into_iter()
-                    .map(|(key, value)| (key, Cow::Owned(twitch::unescape(&value))))
+                    .map(|(key, value)| (key, Cow::Owned(tmi::unescape(&value))))
                     .collect();
 
                 Ok(Self {
@@ -123,7 +121,7 @@ impl<'a> ResponseMessage<'a> for BasicMessage<'a> {
 
     fn unescape_tags(&mut self) {
         for value in self.tags.values_mut() {
-            let new_value = twitch::unescape(value);
+            let new_value = tmi::unescape(value);
             *value = Cow::Owned(new_value);
         }
     }

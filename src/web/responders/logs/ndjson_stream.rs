@@ -39,7 +39,7 @@ impl Stream for NdJsonLogsStream {
         fut.poll(cx).map(|maybe_result| {
             maybe_result.map(|result| match result {
                 Ok(chunk) => {
-                    let irc_messages = parse_raw(chunk);
+                    let irc_messages = parse_raw(&chunk);
                     let messages: Vec<BasicMessage> = parse_messages(&irc_messages).collect();
 
                     let mut buf = Vec::with_capacity(JSON_MESSAGE_SIZE * messages.len());
@@ -56,7 +56,7 @@ impl Stream for NdJsonLogsStream {
 
                     for message_buf in serialized_messages {
                         buf.extend(message_buf);
-                        buf.push(b'\n');
+                        buf.extend(b"\r\n");
                     }
 
                     Ok(buf)

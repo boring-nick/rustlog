@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-aide = { version = "0.11.0", features = ["axum", "redoc"] }
+aide = { version = "0.13.4", features = ["axum", "redoc"] }
 anyhow = "1.0.75"
-axum = { version = "0.6.20", features = ["headers"] }
+axum = { version = "0.7.5", features = ["tokio"] }
 chrono = { version = "0.4.27", features = ["serde"] }
 clap = { version = "4.4.1", features = ["derive"] }
 clickhouse = { version = "0.11.5", default-features = false, features = [
@@ -15,14 +15,14 @@ clickhouse = { version = "0.11.5", default-features = false, features = [
 dashmap = { version = "5.5.3", features = ["serde"] }
 flate2 = "1.0.27"
 futures = "0.3.28"
-indexmap = "1.9.3"
+indexmap = "2.2.6"
 lazy_static = "1.4.0"
 mimalloc = { version = "0.1.38", default-features = false }
 mime_guess = "2.0.4"
 prometheus = "0.13.3"
 rand = "0.8.5"
 rayon = "1.7.0"
-reqwest = { version = "0.11.20", features = [
+reqwest = { version = "0.12.4", features = [
     "rustls-tls",
     "json",
 ], default-features = false }
@@ -31,11 +31,11 @@ schemars = "0.8.13"
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = { version = "1.0.105", features = ["preserve_order"] }
 serde_repr = "0.1.16"
-strum = { version = "0.25.0", features = ["derive"] }
+strum = { version = "0.26.2", features = ["derive"] }
 thiserror = "1.0.47"
 tokio = { version = "1.32.0", features = ["sync", "signal", "rt-multi-thread"] }
 tokio-stream = "0.1.14"
-tower-http = { version = "0.4.3", features = [
+tower-http = { version = "0.5.2", features = [
     "trace",
     "cors",
     "normalize-path",
@@ -47,17 +47,26 @@ twitch-irc = { version = "5.0.1", default-features = false, features = [
     "metrics-collection",
     "transport-tcp-rustls-webpki-roots",
 ] }
-twitch_api2 = { version = "0.6.1", features = [
-    "reqwest",
+twitch_api = { git = "https://github.com/twitch-rs/twitch_api", features = [
+    "client",
     "helix",
+    "reqwest",
     "twitch_oauth2",
 ] }
-twitch = { git = "https://github.com/jprochazk/twitch-rs", features = ["simd"] }
-axum-prometheus = "0.4.0"
-metrics-prometheus = "0.4.1"
-csv = "1.2.2"
-itertools = "0.11.0"
+tmi = { version = "0.6.0", default-features = false, features = ["simd"] }
+axum-prometheus = "0.6.1"
+metrics-prometheus = "0.6.0"
 async-trait = "0.1.73"
+csv = "1.2.2"
+axum-extra = { version = "0.9.3", features = ["typed-header"] }
+
+# https://github.com/twitch-rs/twitch_api/issues/256
+[patch.crates-io.twitch_types]
+git = "https://github.com/twitch-rs/twitch_api"
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
+
+[profile.release]
+strip = true
+lto = "thin"

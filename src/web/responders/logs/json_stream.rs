@@ -46,7 +46,7 @@ impl JsonLogsStream {
 
     fn serialize_chunk<'a, T: ResponseMessage<'a>>(
         &mut self,
-        irc_messages: &'a [twitch::Message],
+        irc_messages: &'a [tmi::IrcMessageRef],
     ) -> Vec<u8> {
         let mut messages: VecDeque<T> = parse_messages(irc_messages).collect();
 
@@ -95,7 +95,7 @@ impl Stream for JsonLogsStream {
         match fut.poll(cx) {
             Poll::Ready(Some(result)) => match result {
                 Ok(chunk) => {
-                    let irc_messages = parse_raw(chunk);
+                    let irc_messages = parse_raw(&chunk);
                     let buf = match self.response_type {
                         JsonResponseType::Basic => {
                             self.serialize_chunk::<BasicMessage>(&irc_messages)

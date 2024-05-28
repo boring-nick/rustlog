@@ -20,10 +20,10 @@ use crate::{
 use aide::axum::IntoApiResponse;
 use axum::{
     extract::{Path, Query, RawQuery, State},
-    headers::CacheControl,
     response::{IntoResponse, Redirect, Response},
-    Json, TypedHeader,
+    Json,
 };
+use axum_extra::{headers::CacheControl, TypedHeader};
 use chrono::{Days, Months, NaiveDate, NaiveTime, Utc};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::time::Duration;

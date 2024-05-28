@@ -10,10 +10,10 @@ use crate::{
     web::schema::AvailableLogDate,
     Result,
 };
-use chrono::{DateTime, Datelike, Duration, NaiveDateTime, Utc};
+use chrono::{DateTime, Datelike, Duration, Utc};
 use clickhouse::{query::RowCursor, Client};
 use rand::{seq::IteratorRandom, thread_rng};
-use tracing::{debug, info};
+use tracing::debug;
 
 const CHANNEL_MULTI_QUERY_SIZE_DAYS: i64 = 14;
 
@@ -143,8 +143,7 @@ pub async fn read_available_channel_logs(
     let dates = timestamps
         .into_iter()
         .map(|timestamp| {
-            let naive =
-                NaiveDateTime::from_timestamp_opt(timestamp.into(), 0).expect("Invalid DateTime");
+            let naive = DateTime::from_timestamp(timestamp.into(), 0).expect("Invalid DateTime");
 
             AvailableLogDate {
                 year: naive.year().to_string(),
@@ -171,8 +170,7 @@ pub async fn read_available_user_logs(
     let dates = timestamps
         .into_iter()
         .map(|timestamp| {
-            let naive =
-                NaiveDateTime::from_timestamp_opt(timestamp.into(), 0).expect("Invalid DateTime");
+            let naive = DateTime::from_timestamp(timestamp.into(), 0).expect("Invalid DateTime");
 
             AvailableLogDate {
                 year: naive.year().to_string(),
@@ -254,12 +252,12 @@ pub async fn read_random_channel_line(db: &Client, channel_id: &str) -> Result<S
     Ok(text)
 }
 
-pub async fn delete_user_logs(db: &Client, user_id: &str) -> Result<()> {
-    info!("Deleting all logs for user {user_id}");
-    db.query("ALTER TABLE message DELETE WHERE user_id = ?")
-        .bind(user_id)
-        .execute()
-        .await?;
+pub async fn delete_user_logs(_db: &Client, _user_id: &str) -> Result<()> {
+    // info!("Deleting all logs for user {user_id}");
+    // db.query("ALTER TABLE message DELETE WHERE user_id = ?")
+    //     .bind(user_id)
+    //     .execute()
+    //     .await?;
     Ok(())
 }
 

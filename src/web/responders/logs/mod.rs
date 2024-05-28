@@ -11,7 +11,7 @@ use self::{
 use crate::logs::{schema::message::FullMessage, stream::LogsStream};
 use aide::OperationOutput;
 use axum::{
-    body::StreamBody,
+    body::Body,
     http::HeaderValue,
     response::{IntoResponse, IntoResponseParts, Response},
     Json,
@@ -45,25 +45,37 @@ impl IntoResponse for LogsResponse {
         match self.response_type {
             LogsResponseType::Raw => {
                 let stream = self.stream.map_ok(|mut line| {
-                    line.push('\n');
+                    line.push_str("\r\n");
                     line
                 });
 
-                (set_content_type(&TEXT_PLAIN_UTF_8), StreamBody::new(stream)).into_response()
+                (
+                    set_content_type(&TEXT_PLAIN_UTF_8),
+                    Body::from_stream(stream),
+                )
+                    .into_response()
             }
             LogsResponseType::Text => {
                 let stream = TextLogsStream::new(self.stream);
-                (set_content_type(&TEXT_PLAIN_UTF_8), StreamBody::new(stream)).into_response()
+                (
+                    set_content_type(&TEXT_PLAIN_UTF_8),
+                    Body::from_stream(stream),
+                )
+                    .into_response()
             }
             LogsResponseType::Json(response_type) => {
                 let stream = JsonLogsStream::new(self.stream, response_type);
-                (set_content_type(&APPLICATION_JSON), StreamBody::new(stream)).into_response()
+                (
+                    set_content_type(&APPLICATION_JSON),
+                    Body::from_stream(stream),
+                )
+                    .into_response()
             }
             LogsResponseType::NdJson => {
                 let stream = NdJsonLogsStream::new(self.stream);
                 (
                     set_content_type(&"application/x-ndjson"),
-                    StreamBody::new(stream),
+                    Body::from_stream(stream),
                 )
                     .into_response()
             }

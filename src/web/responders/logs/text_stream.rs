@@ -34,11 +34,11 @@ impl Stream for TextLogsStream {
         fut.poll(cx).map(|item| {
             item.map(|result| match result {
                 Ok(chunk) => {
-                    let irc_messages = parse_raw(chunk);
+                    let irc_messages = parse_raw(&chunk);
                     let messages: Vec<FullMessage> = parse_messages(&irc_messages).collect();
 
-                    let mut text = messages.iter().join('\n').to_string();
-                    text.push('\n');
+                    let mut text = messages.iter().join("\r\n").to_string();
+                    text.push_str("\r\n");
 
                     Ok(text)
                 }

@@ -21,6 +21,7 @@ use futures::{future::try_join_all, stream::FuturesUnordered, StreamExt};
 use migrator::Migrator;
 use mimalloc::MiMalloc;
 use std::{
+    env,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -31,7 +32,7 @@ use tokio::{
 };
 use tracing::{debug, info};
 use tracing_subscriber::EnvFilter;
-use twitch_api2::{
+use twitch_api::{
     twitch_oauth2::{AppAccessToken, Scope},
     HelixClient,
 };
@@ -46,10 +47,15 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let use_ansi = env::var("RUST_LOG_ANSI")
+        .ok()
+        .and_then(|ansi| ansi.parse().ok())
+        .unwrap_or(true);
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
+        .with_ansi(use_ansi)
         .init();
 
     let config = Config::load()?;

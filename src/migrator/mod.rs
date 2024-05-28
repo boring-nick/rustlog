@@ -24,9 +24,9 @@ use std::{
     },
     time::{Duration, Instant},
 };
+use tmi::Command;
 use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};
-use twitch::Command;
 
 const INSERT_BATCH_SIZE: u64 = 10_000_000;
 
@@ -242,15 +242,15 @@ async fn write_line<'a>(
     inserter: &mut Inserter<Message<'_>>,
     datetime: DateTime<Utc>,
 ) -> anyhow::Result<()> {
-    match twitch::Message::parse_with_whitelist(
-        raw,
-        twitch::whitelist!(TmiSentTs, UserId, TargetUserId),
+    match tmi::IrcMessageRef::parse_with_whitelist(
+        &raw,
+        tmi::whitelist!(TmiSentTs, UserId, TargetUserId),
     ) {
-        Ok(irc_message) => {
+        Some(irc_message) => {
             let timestamp = extract_raw_timestamp(&irc_message)
                 .unwrap_or_else(|| datetime.timestamp_millis() as u64);
             let user_id = extract_user_id(&irc_message).unwrap_or_else(|| {
-                if *irc_message.command() == Command::Privmsg {
+                if irc_message.command() == Command::Privmsg {
                     warn!(
                         "Could not extract user id from PRIVMSG, partially malformed message: `{}`",
                         irc_message.raw()
@@ -270,8 +270,8 @@ async fn write_line<'a>(
             let message: Message<'static> = unsafe { std::mem::transmute(message) };
             inserter.write(&message).await?;
         }
-        Err(msg) => {
-            warn!("Could not parse message `{msg}`");
+        None => {
+            warn!("Could not parse message `{raw}`");
         }
     }
 
