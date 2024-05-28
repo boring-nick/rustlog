@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context};
+use futures::future::join_all;
 use serde::Deserialize;
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
@@ -6,7 +7,8 @@ use std::{
     io::BufReader,
     path::Path,
 };
-use tracing::{debug, info, trace, warn};
+use tokio::sync::Semaphore;
+use tracing::{debug, info, warn};
 
 #[derive(Default)]
 pub struct UsersClient {
@@ -20,7 +22,7 @@ pub struct UsersClient {
 struct FileUser {
     #[serde(rename = "Name")]
     name: String,
-    #[serde(rename = "ID")]
+    #[serde(rename = "Twitch_ID")]
     id: String,
 }
 
@@ -91,11 +93,15 @@ impl UsersClient {
             }
         }
 
+        let concurrent_limit = Semaphore::new(5);
+
         let request_futures = ids_to_request.chunks(50).map(|chunk| {
-            debug!("Requesting a chunk of {} users", chunk.len());
-            trace!("{chunk:?}");
+            info!("Requesting a chunk of {} users", chunk.len());
+            debug!("{chunk:?}");
 
             async {
+                let _lock = concurrent_limit.acquire().await.unwrap();
+
                 let response = self
                     .client
                     .get("https://api.ivr.fi/v2/twitch/user")
@@ -113,11 +119,11 @@ impl UsersClient {
                 Ok(response.json::<Vec<IvrUser>>().await?)
             }
         });
-        // let results = join_all(request_futures).await;
-        let mut results = Vec::with_capacity(request_futures.len());
-        for future in request_futures {
-            results.push(future.await);
-        }
+        let results = join_all(request_futures).await;
+        // let mut results = Vec::with_capacity(request_futures.len());
+        // for future in request_futures {
+        //     results.push(future.await);
+        // }
 
         for result in results {
             let api_response = result?;
