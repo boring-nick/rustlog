@@ -80,7 +80,7 @@ impl Bot {
                 let channel_ids = app.config.channels.read().unwrap().clone();
 
                 let interval = match app
-                    .get_users(Vec::from_iter(channel_ids), vec![], Some(true))
+                    .get_users(Vec::from_iter(channel_ids), vec![], true)
                     .await
                 {
                     Ok(users) => {
@@ -291,7 +291,7 @@ impl Bot {
             .get_users(
                 vec![],
                 channels.iter().map(ToString::to_string).collect(),
-                None,
+                false,
             )
             .await?;
 

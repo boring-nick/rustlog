@@ -23,13 +23,13 @@ impl App {
         &self,
         ids: Vec<String>,
         names: Vec<String>,
-        ignore_cache: Option<bool>,
+        ignore_cache: bool,
     ) -> Result<HashMap<String, String>> {
         let mut users = HashMap::new();
         let mut ids_to_request = Vec::new();
         let mut names_to_request = Vec::new();
 
-        if ignore_cache.unwrap_or(false) {
+        if ignore_cache {
             ids_to_request = ids.clone();
             names_to_request = names.clone()
         } else {
