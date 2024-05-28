@@ -31,7 +31,7 @@ impl App {
 
         if ignore_cache {
             ids_to_request = ids.clone();
-            names_to_request = names.clone()
+            names_to_request = names.clone();
         } else {
             for id in ids {
                 match self.users.get_login(&id) {
