@@ -10,6 +10,8 @@ use std::{
 use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};
 
+const USERS_REQUEST_CHUNK_SIZE: usize = 50;
+
 #[derive(Default)]
 pub struct UsersClient {
     client: reqwest::Client,
@@ -95,30 +97,32 @@ impl UsersClient {
 
         let concurrent_limit = Semaphore::new(5);
 
-        let request_futures = ids_to_request.chunks(50).map(|chunk| {
-            info!("Requesting a chunk of {} users", chunk.len());
-            debug!("{chunk:?}");
+        let request_futures = ids_to_request
+            .chunks(USERS_REQUEST_CHUNK_SIZE)
+            .map(|chunk| {
+                info!("Requesting a chunk of {} users", chunk.len());
+                debug!("{chunk:?}");
 
-            async {
-                let _lock = concurrent_limit.acquire().await.unwrap();
+                async {
+                    let _lock = concurrent_limit.acquire().await.unwrap();
 
-                let response = self
-                    .client
-                    .get("https://api.ivr.fi/v2/twitch/user")
-                    .query(&[("id", chunk.join(","))])
-                    .send()
-                    .await?;
+                    let response = self
+                        .client
+                        .get("https://api.ivr.fi/v2/twitch/user")
+                        .query(&[("id", chunk.join(","))])
+                        .send()
+                        .await?;
 
-                if !response.status().is_success() {
-                    return Err(anyhow!(
-                        "Got an error from IVR API: {} {}",
-                        response.status(),
-                        response.text().await?
-                    ));
+                    if !response.status().is_success() {
+                        return Err(anyhow!(
+                            "Got an error from IVR API: {} {}",
+                            response.status(),
+                            response.text().await?
+                        ));
+                    }
+                    Ok(response.json::<Vec<IvrUser>>().await?)
                 }
-                Ok(response.json::<Vec<IvrUser>>().await?)
-            }
-        });
+            });
         let results = join_all(request_futures).await;
         // let mut results = Vec::with_capacity(request_futures.len());
         // for future in request_futures {

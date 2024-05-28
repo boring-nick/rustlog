@@ -23,7 +23,7 @@ use tracing::{error, info};
 
 // Exmaple: 2023-06-23 14:46:26.588
 const DATE_FMT: &str = "%F %X%.3f";
-const USERS_REQUEST_CHUNK_SIZE: usize = 50;
+const USERS_COUNT_REQUEST_THRESHOLD: usize = 1000;
 
 pub async fn run(
     config: Config,
@@ -64,7 +64,7 @@ pub async fn run(
             let existing_dates = get_existing_dates(&db, &channel_id).await?;
 
             let migrator = SupibotMigrator {
-                non_cached_messages: HashMap::with_capacity(USERS_REQUEST_CHUNK_SIZE),
+                non_cached_messages: HashMap::with_capacity(USERS_COUNT_REQUEST_THRESHOLD),
                 inserter,
                 channel_id: channel_id.to_owned(),
                 channel_login: channel_name.to_owned(),
@@ -175,7 +175,7 @@ impl SupibotMigrator {
                         .or_default()
                         .push(supibot_message);
 
-                    if self.non_cached_messages.len() >= USERS_REQUEST_CHUNK_SIZE {
+                    if self.non_cached_messages.len() >= USERS_COUNT_REQUEST_THRESHOLD {
                         self.flush_non_cached(users_client).await?;
                     }
                 }
