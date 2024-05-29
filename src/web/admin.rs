@@ -72,7 +72,7 @@ pub async fn add_channels(
     app: State<App>,
     Json(ChannelsRequest { channels }): Json<ChannelsRequest>,
 ) -> Result<(), Error> {
-    let users = app.get_users(channels, vec![]).await?;
+    let users = app.get_users(channels, vec![], false).await?;
     let names = users.into_values().collect();
 
     bot_tx.send(BotMessage::JoinChannels(names)).await.unwrap();
@@ -85,7 +85,7 @@ pub async fn remove_channels(
     app: State<App>,
     Json(ChannelsRequest { channels }): Json<ChannelsRequest>,
 ) -> Result<(), Error> {
-    let users = app.get_users(channels, vec![]).await?;
+    let users = app.get_users(channels, vec![], false).await?;
     let names = users.into_values().collect();
 
     bot_tx.send(BotMessage::PartChannels(names)).await.unwrap();

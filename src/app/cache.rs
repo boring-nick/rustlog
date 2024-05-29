@@ -2,7 +2,7 @@ use dashmap::DashMap;
 use std::{sync::Arc, time::Instant};
 use tracing::trace;
 
-const EXPIRY_INTERVAL: u64 = 600;
+const EXPIRY_INTERVAL: u64 = 7200;
 
 // Banned users are stored as None
 #[derive(Clone, Default)]

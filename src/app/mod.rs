@@ -23,28 +23,34 @@ impl App {
         &self,
         ids: Vec<String>,
         names: Vec<String>,
+        ignore_cache: bool,
     ) -> Result<HashMap<String, String>> {
         let mut users = HashMap::new();
         let mut ids_to_request = Vec::new();
         let mut names_to_request = Vec::new();
 
-        for id in ids {
-            match self.users.get_login(&id) {
-                Some(Some(login)) => {
-                    users.insert(id, login);
+        if ignore_cache {
+            ids_to_request = ids.clone();
+            names_to_request = names.clone();
+        } else {
+            for id in ids {
+                match self.users.get_login(&id) {
+                    Some(Some(login)) => {
+                        users.insert(id, login);
+                    }
+                    Some(None) => (),
+                    None => ids_to_request.push(id),
                 }
-                Some(None) => (),
-                None => ids_to_request.push(id),
             }
-        }
 
-        for name in names {
-            match self.users.get_id(&name) {
-                Some(Some(id)) => {
-                    users.insert(id, name);
+            for name in names {
+                match self.users.get_id(&name) {
+                    Some(Some(id)) => {
+                        users.insert(id, name);
+                    }
+                    Some(None) => (),
+                    None => names_to_request.push(name),
                 }
-                Some(None) => (),
-                None => names_to_request.push(name),
             }
         }
 
