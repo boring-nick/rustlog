@@ -9,7 +9,8 @@ use self::handlers::no_cache_header;
 use crate::{app::App, bot::BotMessage, web::admin::admin_auth, ShutdownRx};
 use aide::{
     axum::{
-        routing::{get, get_with, post, post_with},
+        // routing::{get, get_with, post, post_with},
+        routing::{get, get_with, post_with},
         ApiRouter, IntoApiResponse,
     },
     openapi::OpenApi,
@@ -137,7 +138,7 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
                 op.description("Get a random line from the user's logs in a channel")
             }),
         )
-        .api_route("/optout", post(handlers::optout))
+        // .api_route("/optout", post(handlers::optout))
         .api_route("/capabilities", get(capabilities))
         .route("/docs", Redoc::new("/openapi.json").axum_route())
         .route("/openapi.json", get(serve_openapi))
