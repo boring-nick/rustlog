@@ -22,6 +22,7 @@ pub struct Config {
     #[serde(rename = "clientID")]
     pub client_id: String,
     pub client_secret: String,
+    pub access_token: String,
     pub admins: Vec<String>,
     #[serde(default)]
     pub opt_out: DashMap<String, bool>,
