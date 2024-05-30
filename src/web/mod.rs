@@ -140,13 +140,13 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
         .api_route(
             "/:channel_id_type/:channel/user/:user/search",
             get_with(handlers::search_user_logs_by_name, |op| {
-                op
+                op.description("Search user logs using the provided query")
             }),
         )
         .api_route(
             "/:channel_id_type/:channel/userid/:user/search",
             get_with(handlers::search_user_logs_by_id, |op| {
-                op
+                op.description("Search user logs using the provided query")
             }),
         )
         .api_route("/optout", post(handlers::optout))
