@@ -137,6 +137,18 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
                 op.description("Get a random line from the user's logs in a channel")
             }),
         )
+        .api_route(
+            "/:channel_id_type/:channel/user/:user/search",
+            get_with(handlers::search_user_logs_by_name, |op| {
+                op
+            }),
+        )
+        .api_route(
+            "/:channel_id_type/:channel/userid/:user/search",
+            get_with(handlers::search_user_logs_by_id, |op| {
+                op
+            }),
+        )
         .api_route("/optout", post(handlers::optout))
         .api_route("/capabilities", get(capabilities))
         .route("/docs", Redoc::new("/openapi.json").axum_route())

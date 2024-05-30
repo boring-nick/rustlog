@@ -7,7 +7,7 @@ pub use migrations::run as setup_db;
 use crate::{
     error::Error,
     logs::{schema::LogRangeParams, stream::LogsStream},
-    web::schema::AvailableLogDate,
+    web::schema::{AvailableLogDate, LogsParams},
     Result,
 };
 use chrono::{DateTime, Datelike, Duration, Utc};
@@ -259,6 +259,27 @@ pub async fn delete_user_logs(_db: &Client, _user_id: &str) -> Result<()> {
     //     .execute()
     //     .await?;
     Ok(())
+}
+
+pub async fn search_user_logs(
+    db: &Client,
+    channel_id: &str,
+    user_id: &str,
+    search: &str,
+    params: &LogsParams,
+) -> Result<LogsStream> {
+    let suffix = if params.reverse { "DESC" } else { "ASC" };
+
+    let mut query = format!("SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND positionCaseInsensitive(raw, ?) != 0 ORDER BY timestamp {suffix}");
+    apply_limit_offset(&mut query, params.limit, params.offset);
+
+    let cursor = db
+        .query(&query)
+        .bind(channel_id)
+        .bind(user_id)
+        .bind(search)
+        .fetch()?;
+    LogsStream::new_cursor(cursor).await
 }
 
 fn apply_limit_offset(query: &mut String, limit: Option<u64>, offset: Option<u64>) {

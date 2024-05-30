@@ -2,14 +2,14 @@ use super::{
     responders::logs::LogsResponse,
     schema::{
         AvailableLogs, AvailableLogsParams, Channel, ChannelIdType, ChannelLogsByDatePath,
-        ChannelParam, ChannelsList, LogsParams, LogsPathChannel, UserLogPathParams, UserLogsPath,
-        UserParam,
+        ChannelParam, ChannelsList, LogsParams, LogsPathChannel, SearchParams, UserLogPathParams,
+        UserLogsPath, UserParam,
     },
 };
 use crate::{
     app::App,
     db::{
-        read_available_channel_logs, read_available_user_logs, read_channel,
+        self, read_available_channel_logs, read_available_user_logs, read_channel,
         read_random_channel_line, read_random_user_line, read_user,
     },
     error::Error,
@@ -367,6 +367,61 @@ async fn random_user_line(
         response_type: logs_params.response_type(),
     };
     Ok((no_cache_header(), logs))
+}
+
+pub async fn search_user_logs_by_name(
+    app: State<App>,
+    Path(UserLogPathParams {
+        channel_id_type,
+        channel,
+        user,
+    }): Path<UserLogPathParams>,
+    params: Query<SearchParams>,
+) -> Result<impl IntoApiResponse> {
+    let user_id = app.get_user_id_by_name(&user).await?;
+    search_user_logs(app, channel_id_type, channel, user_id, params).await
+}
+
+pub async fn search_user_logs_by_id(
+    app: State<App>,
+    Path(UserLogPathParams {
+        channel_id_type,
+        channel,
+        user,
+    }): Path<UserLogPathParams>,
+    params: Query<SearchParams>,
+) -> Result<impl IntoApiResponse> {
+    search_user_logs(app, channel_id_type, channel, user, params).await
+}
+
+async fn search_user_logs(
+    app: State<App>,
+    channel_id_type: ChannelIdType,
+    channel: String,
+    user_id: String,
+    params: Query<SearchParams>,
+) -> Result<impl IntoApiResponse> {
+    let channel_id = match channel_id_type {
+        ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
+        ChannelIdType::Id => channel,
+    };
+
+    app.check_opted_out(&channel_id, Some(&user_id))?;
+
+    let stream = db::search_user_logs(
+        &app.db,
+        &channel_id,
+        &user_id,
+        &params.q,
+        &params.logs_params,
+    )
+    .await?;
+
+    let logs = LogsResponse {
+        stream,
+        response_type: params.logs_params.response_type(),
+    };
+    Ok(logs)
 }
 
 pub async fn optout(app: State<App>) -> Json<String> {
