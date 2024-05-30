@@ -103,6 +103,13 @@ where
     Ok(Option::<&str>::deserialize(deserializer)?.is_some())
 }
 
+#[derive(Deserialize, Debug, JsonSchema)]
+pub struct SearchParams {
+    pub q: String,
+    #[serde(flatten)]
+    pub logs_params: LogsParams,
+}
+
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AvailableLogs {
