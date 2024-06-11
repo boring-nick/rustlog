@@ -45,6 +45,28 @@ MATERIALIZE PROJECTION channel_log_dates",
     )
     .await?;
 
+    run_migration(
+        db,
+        "4_set_t64_timestamp_codec",
+        "
+ALTER TABLE message
+MODIFY COLUMN timestamp
+DateTime64(3) CODEC(T64, ZSTD(10))
+    ",
+    )
+    .await?;
+
+    run_migration(
+        db,
+        "5_increase_raw_compression",
+        "
+ALTER TABLE message
+MODIFY COLUMN raw
+String CODEC(ZSTD(10))
+    ",
+    )
+    .await?;
+
     Ok(())
 }
 
