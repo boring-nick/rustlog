@@ -54,7 +54,7 @@ twitch_api = { git = "https://github.com/twitch-rs/twitch_api", features = [
     "reqwest",
     "twitch_oauth2",
 ] }
-tmi = { version = "0.6.0", default-features = false, features = ["simd"] }
+tmi = { version = "0.6.1", default-features = false, features = ["simd"] }
 axum-prometheus = "0.6.1"
 metrics-prometheus = "0.6.0"
 axum-extra = { version = "0.9.3", features = ["typed-header"] }

@@ -62,6 +62,9 @@ pub struct StructuredMessage<'a> {
     pub user_type: Cow<'a, str>,
     pub badges: Vec<Cow<'a, str>>,
     pub badge_info: Cow<'a, str>,
+    pub client_nonce: Cow<'a, str>,
+    pub emotes: Cow<'a, str>,
+    pub automod_flags: Cow<'a, str>,
     pub text: Cow<'a, str>,
     pub message_flags: MessageFlags,
     pub extra_tags: Vec<(Cow<'a, str>, Cow<'a, str>)>,
@@ -140,12 +143,15 @@ impl<'a> StructuredMessage<'a> {
         let mut display_name = String::new();
         let mut color = None;
         let mut user_type = "";
+        let mut client_nonce = String::new();
+        let mut emotes = String::new();
+        let mut automod_flags = String::new();
         let mut badges = Vec::new();
         let mut badge_info = String::new();
 
         for (tag, value) in irc_message.tags() {
             match tag {
-                Tag::MessageId | Tag::Id => {
+                Tag::MessageId | Tag::Id | Tag::MsgId => {
                     if let Ok(uuid) = Uuid::parse_str(value) {
                         id = uuid;
                     }
@@ -169,7 +175,16 @@ impl<'a> StructuredMessage<'a> {
                 Tag::BadgeInfo => {
                     badge_info = unescape(value);
                 }
-                Tag::RoomId | Tag::UserId | Tag::TmiSentTs => (),
+                Tag::Emotes => {
+                    emotes = unescape(value);
+                }
+                Tag::ClientNonce => {
+                    client_nonce = unescape(value);
+                }
+                Tag::Flags => {
+                    automod_flags = unescape(value);
+                }
+                Tag::RoomId | Tag::UserId | Tag::TmiSentTs | Tag::SentTs => (),
                 _ => {
                     if let Some(flag) = MessageFlags::from_tag(&tag) {
                         if value == "1" {
@@ -199,6 +214,9 @@ impl<'a> StructuredMessage<'a> {
             user_type: Cow::Borrowed(user_type),
             badges,
             badge_info: Cow::Owned(badge_info),
+            client_nonce: Cow::Owned(client_nonce),
+            automod_flags: Cow::Owned(automod_flags),
+            emotes: Cow::Owned(emotes),
             text,
             extra_tags,
         })
@@ -251,8 +269,10 @@ impl MessageType {
 }
 
 fn extract_message_text(message_text: &str) -> &str {
-    let message_text = message_text.trim_start();
-    let mut message_text = message_text.strip_prefix(':').unwrap_or(message_text);
+    let mut message_text = message_text
+        .strip_prefix(':')
+        .unwrap_or(message_text)
+        .trim_start();
 
     let is_action =
         message_text.starts_with("\u{0001}ACTION ") && message_text.ends_with('\u{0001}');
@@ -266,9 +286,8 @@ fn extract_message_text(message_text: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use crate::db::schema::MessageFlags;
-
     use super::{MessageType, StructuredMessage, UnstructuredMessage};
+    use crate::db::schema::MessageFlags;
     use pretty_assertions::assert_eq;
     use uuid::Uuid;
 
@@ -298,11 +317,11 @@ mod tests {
             user_type: "".into(),
             badges: vec!["vip/1".into(), "subscriber/60".into()],
             badge_info: "subscriber/65".into(),
+            client_nonce: "".into(),
+            emotes: "".into(),
+            automod_flags: "".into(),
             text: "+join 󠀀".into(),
-            extra_tags: [("flags", ""), ("emotes", "")]
-                .into_iter()
-                .map(|(k, v)| (k.into(), v.into()))
-                .collect(),
+            extra_tags: vec![],
         };
 
         assert_eq!(expected_message, message);

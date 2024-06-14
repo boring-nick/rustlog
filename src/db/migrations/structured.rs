@@ -1,7 +1,14 @@
 use super::migratable::Migratable;
 use crate::db::schema::{StructuredMessage, UnstructuredMessage, MESSAGES_STRUCTURED_TABLE};
 use anyhow::Context;
-use std::time::Duration;
+use std::{
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    },
+    time::{Duration, Instant},
+};
+use tokio::sync::Semaphore;
 use tracing::{error, info};
 
 const INSERT_BATCH_SIZE: u64 = 10_000_000;
@@ -16,21 +23,24 @@ impl<'a> Migratable<'a> for StructuredMigration<'a> {
             "
 CREATE TABLE IF NOT EXISTS message_structured
 (
-    `channel_id` LowCardinality(String),
-    `channel_login` LowCardinality(String),
-    `timestamp` DateTime64(3) CODEC(DoubleDelta, ZSTD(5)),
-    `id` UUID CODEC(ZSTD(5)),
-    `message_type` UInt8 CODEC(ZSTD(5)),
-    `user_id` String CODEC(ZSTD(5)),
-    `user_login` String CODEC(ZSTD(5)),
-    `display_name` String CODEC(ZSTD(5)),
-    `color` Nullable(UInt32) CODEC(ZSTD(5)),
-    `user_type` LowCardinality(String) CODEC(ZSTD(5)),
-    `badges` Array(LowCardinality(String)) CODEC(ZSTD(5)),
-    `badge_info` String CODEC(ZSTD(5)),
-    `text` String CODEC(ZSTD(5)),
-    `message_flags` UInt16 CODEC(ZSTD(5)),
-    `extra_tags` Map(LowCardinality(String), String) CODEC(ZSTD(5)),
+    `channel_id` LowCardinality(String) CODEC(ZSTD(8)),
+    `channel_login` LowCardinality(String) CODEC(ZSTD(8)),
+    `timestamp` DateTime64(3) CODEC(T64, ZSTD(5)),
+    `id` UUID CODEC(ZSTD(1)),
+    `message_type` UInt8 CODEC(ZSTD(8)),
+    `user_id` String CODEC(ZSTD(8)),
+    `user_login` String CODEC(ZSTD(8)),
+    `display_name` String CODEC(ZSTD(8)),
+    `color` Nullable(UInt32) CODEC(ZSTD(8)),
+    `user_type` LowCardinality(String) CODEC(ZSTD(8)),
+    `badges` Array(LowCardinality(String)) CODEC(ZSTD(8)),
+    `badge_info` String CODEC(ZSTD(8)),
+    `client_nonce` String CODEC(ZSTD(1)),
+    `emotes` String CODEC(ZSTD(8)),
+    `automod_flags` String CODEC(ZSTD(8)),
+    `text` String CODEC(ZSTD(8)),
+    `message_flags` UInt16 CODEC(ZSTD(8)),
+    `extra_tags` Map(LowCardinality(String), String) CODEC(ZSTD(8)),
     PROJECTION channel_log_dates
     (
         SELECT
@@ -61,54 +71,95 @@ ORDER BY (channel_id, user_id, timestamp)
             partitions.len()
         );
 
-        let mut i = 1;
+        let i = Arc::new(AtomicU64::new(1));
+        let semaphore = Arc::new(Semaphore::new(8));
+
+        let started_at = Instant::now();
+
+        let mut tasks = Vec::new();
 
         for partition in partitions {
-            info!("Migrating partition {partition}");
+            let _permit = semaphore.clone().acquire_owned().await?;
 
-            let mut inserter = db
-                .inserter(MESSAGES_STRUCTURED_TABLE)?
-                .with_timeouts(
-                    Some(Duration::from_secs(30)),
-                    Some(Duration::from_secs(180)),
-                )
-                .with_max_entries(INSERT_BATCH_SIZE)
-                .with_period(Some(Duration::from_secs(15)));
+            let db = db.clone();
+            let i = i.clone();
+            let task = tokio::spawn(async move {
+                let result = migrate_partition(partition, &db, i).await;
+                drop(_permit);
+                result
+            });
 
-            let mut cursor = db
-                .query("SELECT * FROM message WHERE toYYYYMM(timestamp) = ?")
-                .bind(&partition)
-                .fetch::<UnstructuredMessage>()?;
-
-            while let Some(unstructured_msg) = cursor.next().await? {
-                match StructuredMessage::from_unstructured(&unstructured_msg) {
-                    Ok(msg) => {
-                        // This is safe because despite the function signature,
-                        // `inserter.write` only uses the value for serialization at the time of the method call, and not later
-                        let msg: StructuredMessage<'static> = unsafe { std::mem::transmute(msg) };
-                        inserter
-                            .write(&msg)
-                            .await
-                            .context("Failed to write message")?;
-
-                        i += 1;
-                        if i % 100_000 == 0 {
-                            info!("Processed {i} messages");
-                        }
-                    }
-                    Err(err) => {
-                        error!("Could not process message {unstructured_msg:?}: {err}");
-                    }
-                }
-            }
-
-            let stats = inserter.end().await?;
-            info!(
-                "Processed partition {partition} with {} messages",
-                stats.entries
-            );
+            tasks.push(task);
         }
+
+        for task in tasks {
+            task.await.unwrap()?;
+        }
+
+        info!(
+            "Migrated {} messages in {:?}",
+            i.load(Ordering::SeqCst),
+            started_at.elapsed()
+        );
 
         Ok(())
     }
+}
+
+async fn migrate_partition(
+    partition: String,
+    db: &clickhouse::Client,
+    i: Arc<AtomicU64>,
+) -> anyhow::Result<()> {
+    info!("Migrating partition {partition}");
+
+    let mut inserter = db
+        .inserter(MESSAGES_STRUCTURED_TABLE)?
+        .with_timeouts(
+            Some(Duration::from_secs(30)),
+            Some(Duration::from_secs(180)),
+        )
+        .with_max_entries(INSERT_BATCH_SIZE)
+        .with_period(Some(Duration::from_secs(15)));
+
+    let mut cursor = db
+        .query("SELECT * FROM message WHERE toYYYYMM(timestamp) = ?")
+        .bind(&partition)
+        .fetch::<UnstructuredMessage>()?;
+
+    while let Some(unstructured_msg) = cursor.next().await? {
+        match StructuredMessage::from_unstructured(&unstructured_msg) {
+            Ok(msg) => {
+                // This is safe because despite the function signature,
+                // `inserter.write` only uses the value for serialization at the time of the method call, and not later
+                let msg: StructuredMessage<'static> = unsafe { std::mem::transmute(msg) };
+                inserter
+                    .write(&msg)
+                    .await
+                    .context("Failed to write message")?;
+
+                let stats = inserter.commit().await.context("Could not commit")?;
+                if stats.entries > 0 {
+                    info!(
+                        "Inserted {} messages from partition {partition}",
+                        stats.entries
+                    );
+                }
+
+                i.fetch_add(1, Ordering::Relaxed);
+                let value = i.load(Ordering::Relaxed);
+                if value % 1_000_000 == 0 {
+                    info!("Processed {value} messages");
+                }
+            }
+            Err(err) => {
+                error!("Could not process message {unstructured_msg:?}: {err}");
+            }
+        }
+    }
+
+    inserter.end().await?;
+    info!("Processed partition {partition}");
+
+    Ok(())
 }
