@@ -2,7 +2,7 @@ mod reader;
 
 use self::reader::{LogsReader, COMPRESSED_CHANNEL_FILE, UNCOMPRESSED_CHANNEL_FILE};
 use crate::{
-    db::schema::{Message, MESSAGES_TABLE},
+    db::schema::{StructuredMessage, MESSAGES_TABLE},
     logs::extract::{extract_raw_timestamp, extract_user_id},
     migrator::reader::ChannelLogDateMap,
 };
@@ -182,7 +182,7 @@ impl Migrator {
         root_path: &Path,
         channel_id: &'a str,
         date: DateTime<Utc>,
-        inserter: &mut Inserter<Message<'a>>,
+        inserter: &mut Inserter<StructuredMessage<'a>>,
     ) -> anyhow::Result<usize> {
         let day_path = get_day_path(root_path, channel_id, date);
 
@@ -211,7 +211,7 @@ impl Migrator {
         reader: R,
         datetime: DateTime<Utc>,
         channel_id: &'a str,
-        inserter: &mut Inserter<Message<'a>>,
+        inserter: &mut Inserter<StructuredMessage<'a>>,
     ) -> anyhow::Result<usize> {
         let mut read_bytes = 0;
 
@@ -238,7 +238,7 @@ impl Migrator {
 async fn write_line<'a>(
     channel_id: &'a str,
     raw: String,
-    inserter: &mut Inserter<Message<'_>>,
+    inserter: &mut Inserter<StructuredMessage<'_>>,
     datetime: DateTime<Utc>,
 ) -> anyhow::Result<()> {
     match tmi::IrcMessageRef::parse_with_whitelist(
@@ -258,16 +258,18 @@ async fn write_line<'a>(
                 ""
             });
 
-            let message = Message {
-                channel_id: Cow::Borrowed(channel_id),
-                user_id: Cow::Borrowed(user_id),
-                timestamp,
-                raw: Cow::Borrowed(irc_message.raw()),
-            };
-            // This is safe because despite the function signature,
-            // `inserter.write` only uses the value for serialization at the time of the method call, and not later
-            let message: Message<'static> = unsafe { std::mem::transmute(message) };
-            inserter.write(&message).await?;
+            todo!();
+
+            // let message = Message {
+            //     channel_id: Cow::Borrowed(channel_id),
+            //     user_id: Cow::Borrowed(user_id),
+            //     timestamp,
+            //     raw: Cow::Borrowed(irc_message.raw()),
+            // };
+            // // This is safe because despite the function signature,
+            // // `inserter.write` only uses the value for serialization at the time of the method call, and not later
+            // let message: Message<'static> = unsafe { std::mem::transmute(message) };
+            // inserter.write(&message).await?;
         }
         None => {
             warn!("Could not parse message `{raw}`");

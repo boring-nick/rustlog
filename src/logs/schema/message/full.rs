@@ -1,10 +1,9 @@
 use super::{BasicMessage, ResponseMessage};
+use crate::db::schema::MessageType;
 use anyhow::{anyhow, Context};
 use schemars::JsonSchema;
 use serde::Serialize;
-use serde_repr::Serialize_repr;
 use std::fmt::Display;
-use strum::EnumString;
 use tmi::{Command, Tag};
 
 const TIMESTAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
@@ -19,20 +18,6 @@ pub struct FullMessage<'a> {
     pub raw: &'a str,
     #[schemars(with = "i8")]
     pub r#type: MessageType,
-}
-
-#[derive(Serialize_repr, EnumString, Debug, PartialEq)]
-#[repr(i8)]
-#[strum(serialize_all = "UPPERCASE")]
-pub enum MessageType {
-    // Whisper = 0,
-    PrivMsg = 1,
-    ClearChat = 2,
-    // RoomState = 3,
-    UserNotice = 4,
-    // UserState = 5,
-    // Notice = 6,
-    ClearMsg = 13,
 }
 
 impl<'a> ResponseMessage<'a> for FullMessage<'a> {

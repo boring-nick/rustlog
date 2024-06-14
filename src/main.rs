@@ -73,7 +73,9 @@ async fn main() -> anyhow::Result<()> {
 
     let args = Args::parse();
 
-    setup_db(&db).await.context("Could not run DB migrations")?;
+    setup_db(&db, &config.clickhouse_db)
+        .await
+        .context("Could not run DB migrations")?;
 
     match args.subcommand {
         None => run(config, db).await,

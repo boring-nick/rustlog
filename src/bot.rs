@@ -1,6 +1,6 @@
 use crate::{
     app::App,
-    db::schema::Message,
+    db::schema::StructuredMessage,
     logs::extract::{extract_channel_and_user_from_raw, extract_raw_timestamp},
     ShutdownRx,
 };
@@ -45,7 +45,7 @@ const COMMAND_PREFIX: &str = "!rustlog ";
 pub async fn run<C: LoginCredentials>(
     login_credentials: C,
     app: App,
-    writer_tx: Sender<Message<'static>>,
+    writer_tx: Sender<StructuredMessage<'static>>,
     shutdown_rx: ShutdownRx,
     command_rx: Receiver<BotMessage>,
 ) {
@@ -56,11 +56,11 @@ pub async fn run<C: LoginCredentials>(
 #[derive(Clone)]
 struct Bot {
     app: App,
-    writer_tx: Sender<Message<'static>>,
+    writer_tx: Sender<StructuredMessage<'static>>,
 }
 
 impl Bot {
-    pub fn new(app: App, writer_tx: Sender<Message<'static>>) -> Bot {
+    pub fn new(app: App, writer_tx: Sender<StructuredMessage<'static>>) -> Bot {
         Self { app, writer_tx }
     }
 
@@ -209,13 +209,14 @@ impl Bot {
                 return Ok(());
             }
 
-            let message = Message {
-                channel_id: Cow::Owned(channel_id.to_owned()),
-                user_id: Cow::Owned(user_id),
-                timestamp,
-                raw: Cow::Owned(irc_message.as_raw_irc()),
-            };
-            self.writer_tx.send(message).await?;
+            // TODO
+            // let message = Message {
+            //     channel_id: Cow::Owned(channel_id.to_owned()),
+            //     user_id: Cow::Owned(user_id),
+            //     timestamp,
+            //     raw: Cow::Owned(irc_message.as_raw_irc()),
+            // };
+            // self.writer_tx.send(message).await?;
         }
 
         Ok(())
