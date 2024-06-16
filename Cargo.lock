@@ -2202,8 +2202,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tmi"
-version = "0.6.1"
-source = "git+https://github.com/jprochazk/tmi-rs#f699ba43b5320ea00789ea94c02cff7132f4587c"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3a96f7060ebf5b1cfec97fde8f7d17fc70434f58955b0b27c4e859c0d3d426e"
 
 [[package]]
 name = "tokio"
