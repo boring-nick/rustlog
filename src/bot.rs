@@ -8,7 +8,7 @@ use anyhow::{anyhow, Context};
 use chrono::Utc;
 use lazy_static::lazy_static;
 use prometheus::{register_int_counter_vec, IntCounterVec};
-use std::{borrow::Cow, time::Duration};
+use std::time::Duration;
 use tokio::{
     sync::mpsc::{Receiver, Sender},
     time::sleep,
@@ -209,11 +209,12 @@ impl Bot {
                 return Ok(());
             }
 
+            let raw_irc = irc_message.as_raw_irc();
             let unstructured = UnstructuredMessage {
-                channel_id: Cow::Owned(channel_id.to_owned()),
-                user_id: Cow::Owned(user_id),
+                channel_id,
+                user_id: &user_id,
                 timestamp,
-                raw: Cow::Owned(irc_message.as_raw_irc()),
+                raw: &raw_irc,
             };
             match StructuredMessage::from_unstructured(&unstructured) {
                 Ok(msg) => {

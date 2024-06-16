@@ -96,10 +96,10 @@ pub struct StructuredMessage<'a> {
 
 #[derive(Row, Serialize, Deserialize, Debug)]
 pub struct UnstructuredMessage<'a> {
-    pub channel_id: Cow<'a, str>,
-    pub user_id: Cow<'a, str>,
+    pub channel_id: &'a str,
+    pub user_id: &'a str,
     pub timestamp: u64,
-    pub raw: Cow<'a, str>,
+    pub raw: &'a str,
 }
 
 impl<'a> StructuredMessage<'a> {
@@ -140,7 +140,7 @@ impl<'a> StructuredMessage<'a> {
         let text = Cow::Borrowed(text);
 
         let mut message_flags = MessageFlags::empty();
-        let mut extra_tags = Vec::with_capacity(irc_message.tags().count());
+        let mut extra_tags = Vec::new();
         let mut id = Uuid::nil();
         let mut display_name = String::new();
         let mut color = None;
@@ -152,6 +152,7 @@ impl<'a> StructuredMessage<'a> {
         let mut badge_info = String::new();
 
         for (tag, value) in irc_message.tags() {
+            let tag = Tag::parse(tag);
             match tag {
                 Tag::Id => {
                     if let Ok(uuid) = Uuid::parse_str(value) {
@@ -208,13 +209,13 @@ impl<'a> StructuredMessage<'a> {
         }
 
         Ok(Self {
-            channel_id: Cow::Borrowed(&message.channel_id),
+            channel_id: Cow::Borrowed(message.channel_id),
             channel_login: Cow::Borrowed(channel_login),
             timestamp: message.timestamp,
             id,
             message_type,
             message_flags,
-            user_id: Cow::Borrowed(&message.user_id),
+            user_id: Cow::Borrowed(message.user_id),
             user_login,
             display_name: Cow::Owned(display_name),
             color,
@@ -495,17 +496,17 @@ mod tests {
     use super::{MessageType, StructuredMessage, UnstructuredMessage};
     use crate::db::schema::MessageFlags;
     use pretty_assertions::assert_eq;
-    use tmi::IrcMessageRef;
+    use tmi::{IrcMessageRef, Tag};
     use uuid::Uuid;
 
     #[test]
     fn from_unstructured_privmsg() {
         let raw = "@returning-chatter=0;user-id=68136884;user-type=;badges=vip/1,subscriber/60;mod=0;display-name=Supibot;room-id=22484632;flags=;emotes=;first-msg=0;vip=1;tmi-sent-ts=1709251274940;id=272e342c-5864-4c59-b730-25908cdb7f57;subscriber=1;turbo=0;color=#1E90FF;badge-info=subscriber/65 :supibot!supibot@supibot.tmi.twitch.tv PRIVMSG #forsen :+join 󠀀";
         let unstructured = UnstructuredMessage {
-            channel_id: "22484632".into(),
-            user_id: "68136884".into(),
+            channel_id: "22484632",
+            user_id: "68136884",
             timestamp: 1709251274940,
-            raw: raw.into(),
+            raw,
         };
 
         let message = StructuredMessage::from_unstructured(&unstructured).unwrap();
@@ -538,10 +539,10 @@ mod tests {
     fn roundtrip_tags() {
         let raw = "@returning-chatter=0;user-id=68136884;user-type=;badges=vip/1,subscriber/60;mod=0;display-name=Supibot;room-id=22484632;flags=;emotes=;first-msg=0;vip=1;tmi-sent-ts=1709251274940;id=272e342c-5864-4c59-b730-25908cdb7f57;subscriber=1;turbo=0;color=#1E90FF;badge-info=subscriber/65 :supibot!supibot@supibot.tmi.twitch.tv PRIVMSG #forsen :+join 󠀀";
         let unstructured = UnstructuredMessage {
-            channel_id: "22484632".into(),
-            user_id: "68136884".into(),
+            channel_id: "22484632",
+            user_id: "68136884",
             timestamp: 1709251274940,
-            raw: raw.into(),
+            raw,
         };
 
         let message = StructuredMessage::from_unstructured(&unstructured).unwrap();
@@ -550,6 +551,7 @@ mod tests {
         let irc_msg = IrcMessageRef::parse(raw).unwrap();
 
         for (original_tag, original_value) in irc_msg.tags() {
+            let original_tag = Tag::parse(original_tag);
             if MessageFlags::from_tag(&original_tag).is_some() && original_value == "0" {
                 continue;
             }
@@ -567,10 +569,11 @@ mod tests {
         let message = StructuredMessage::from_unstructured(&unstructured).unwrap();
         let converted = message.to_raw_irc();
 
-        let original = IrcMessageRef::parse(&unstructured.raw).unwrap();
+        let original = IrcMessageRef::parse(unstructured.raw).unwrap();
         let converted = IrcMessageRef::parse(&converted).unwrap();
 
         for (original_tag, original_value) in original.tags() {
+            let original_tag = Tag::parse(original_tag);
             if MessageFlags::from_tag(&original_tag).is_some() && original_value == "0" {
                 continue;
             }
@@ -589,10 +592,10 @@ mod tests {
     #[test]
     fn roundtrip_privmsg() {
         let unstructured = UnstructuredMessage {
-            channel_id: "22484632".into(),
-            user_id: "68136884".into(),
+            channel_id: "22484632",
+            user_id: "68136884",
             timestamp: 1709251274940,
-            raw: "@returning-chatter=0;user-id=68136884;user-type=;badges=vip/1,subscriber/60;mod=0;display-name=Supibot;room-id=22484632;flags=;emotes=;first-msg=0;vip=1;tmi-sent-ts=1709251274940;id=272e342c-5864-4c59-b730-25908cdb7f57;subscriber=1;turbo=0;color=#1E90FF;badge-info=subscriber/65 :supibot!supibot@supibot.tmi.twitch.tv PRIVMSG #forsen :+join 󠀀".into(),
+            raw: "@returning-chatter=0;user-id=68136884;user-type=;badges=vip/1,subscriber/60;mod=0;display-name=Supibot;room-id=22484632;flags=;emotes=;first-msg=0;vip=1;tmi-sent-ts=1709251274940;id=272e342c-5864-4c59-b730-25908cdb7f57;subscriber=1;turbo=0;color=#1E90FF;badge-info=subscriber/65 :supibot!supibot@supibot.tmi.twitch.tv PRIVMSG #forsen :+join 󠀀",
         };
         assert_roundtrip(unstructured);
     }
@@ -600,10 +603,10 @@ mod tests {
     #[test]
     fn roundtrip_usernotice_sub() {
         let unstructured = UnstructuredMessage {
-            channel_id: "22484632".into(),
-            user_id: "444158477".into(),
+            channel_id: "22484632",
+            user_id: "444158477",
             timestamp: 1686947117960,
-            raw: r"@mod=0;id=0a4b7b50-052e-473e-99ee-441f05ce52a7;login=daney___;msg-param-multimonth-duration=0;display-name=daney___;msg-param-sub-plan-name=Channel\sSubscription\s(forsenlol);msg-param-was-gifted=false;subscriber=1;msg-param-cumulative-months=19;flags=;color=#8A2BE2;msg-param-months=0;user-id=444158477;badges=subscriber/12;user-type=;msg-param-should-share-streak=0;msg-id=resub;emotes=;msg-param-sub-plan=1000;room-id=22484632;system-msg=daney___\ssubscribed\sat\sTier\s1.\sThey've\ssubscribed\sfor\s19\smonths!;tmi-sent-ts=1686947117960;msg-param-multimonth-tenure=0;badge-info=subscriber/19 :tmi.twitch.tv USERNOTICE #forsen :Still here? LULE".into(),
+            raw: r"@mod=0;id=0a4b7b50-052e-473e-99ee-441f05ce52a7;login=daney___;msg-param-multimonth-duration=0;display-name=daney___;msg-param-sub-plan-name=Channel\sSubscription\s(forsenlol);msg-param-was-gifted=false;subscriber=1;msg-param-cumulative-months=19;flags=;color=#8A2BE2;msg-param-months=0;user-id=444158477;badges=subscriber/12;user-type=;msg-param-should-share-streak=0;msg-id=resub;emotes=;msg-param-sub-plan=1000;room-id=22484632;system-msg=daney___\ssubscribed\sat\sTier\s1.\sThey've\ssubscribed\sfor\s19\smonths!;tmi-sent-ts=1686947117960;msg-param-multimonth-tenure=0;badge-info=subscriber/19 :tmi.twitch.tv USERNOTICE #forsen :Still here? LULE",
         };
         assert_roundtrip(unstructured);
     }
@@ -611,10 +614,10 @@ mod tests {
     #[test]
     fn roundtrip_roomstate() {
         let unstructured = UnstructuredMessage {
-            channel_id: "118353866".into(),
-            user_id: "".into(),
+            channel_id: "118353866",
+            user_id: "",
             timestamp: 1686947117960,
-            raw: r"@emote-only=0;followers-only=-1;slow=0;subs-only=0;room-id=118353866;r9k=0 :tmi.twitch.tv ROOMSTATE #twitchmedia_qs_1".into(),
+            raw: r"@emote-only=0;followers-only=-1;slow=0;subs-only=0;room-id=118353866;r9k=0 :tmi.twitch.tv ROOMSTATE #twitchmedia_qs_1",
         };
         assert_roundtrip(unstructured);
     }

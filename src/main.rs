@@ -61,7 +61,8 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::load()?;
     let mut db = clickhouse::Client::default()
         .with_url(&config.clickhouse_url)
-        .with_database(&config.clickhouse_db);
+        .with_database(&config.clickhouse_db)
+        .with_compression(clickhouse::Compression::None);
 
     if let Some(user) = &config.clickhouse_username {
         db = db.with_user(user);

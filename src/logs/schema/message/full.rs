@@ -44,10 +44,10 @@ mod tests {
         let data = "@badges=;color=;display-name=Snusbot;emotes=;mod=0;room-id=22484632;subscriber=0;tmi-sent-ts=1489263601000;turbo=0;user-id=62541963;user-type= :snusbot!snusbot@snusbot.tmi.twitch.tv PRIVMSG #forsen :prasoc won 10 points in roulette and now has 2838 points! forsenPls";
 
         let unstructured = UnstructuredMessage {
-            channel_id: "22484632".into(),
-            user_id: "62541963".into(),
+            channel_id: "22484632",
+            user_id: "62541963",
             timestamp: 1489263601000,
-            raw: data.into(),
+            raw: data,
         };
         let structured = StructuredMessage::from_unstructured(&unstructured).unwrap();
 

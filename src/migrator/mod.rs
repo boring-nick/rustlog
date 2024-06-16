@@ -12,7 +12,6 @@ use clickhouse::inserter::Inserter;
 use flate2::bufread::GzDecoder;
 use indexmap::IndexMap;
 use std::{
-    borrow::Cow,
     convert::TryInto,
     fs::File,
     io::{BufRead, BufReader},
@@ -241,10 +240,7 @@ async fn write_line<'a>(
     inserter: &mut Inserter<StructuredMessage<'_>>,
     datetime: DateTime<Utc>,
 ) -> anyhow::Result<()> {
-    match tmi::IrcMessageRef::parse_with_whitelist(
-        &raw,
-        tmi::whitelist!(TmiSentTs, UserId, TargetUserId),
-    ) {
+    match tmi::IrcMessageRef::parse(&raw) {
         Some(irc_message) => {
             let timestamp = extract_raw_timestamp(&irc_message)
                 .unwrap_or_else(|| datetime.timestamp_millis() as u64);
@@ -259,10 +255,10 @@ async fn write_line<'a>(
             });
 
             let unstructured = UnstructuredMessage {
-                channel_id: Cow::Borrowed(channel_id),
-                user_id: Cow::Borrowed(user_id),
+                channel_id,
+                user_id,
                 timestamp,
-                raw: Cow::Borrowed(irc_message.raw()),
+                raw: irc_message.raw(),
             };
             match StructuredMessage::from_unstructured(&unstructured) {
                 Ok(msg) => {
