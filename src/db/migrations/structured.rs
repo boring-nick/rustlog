@@ -102,6 +102,9 @@ ORDER BY (channel_id, user_id, timestamp)
             started_at.elapsed()
         );
 
+        info!("Dropping old table");
+        db.query("DROP TABLE message").execute().await?;
+
         Ok(())
     }
 }
