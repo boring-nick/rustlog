@@ -1,7 +1,6 @@
 use crate::{
     db::schema::StructuredMessage,
     logs::{
-        parse_messages, parse_raw,
         schema::message::{BasicMessage, FullMessage, ResponseMessage},
         stream::LogsStream,
     },

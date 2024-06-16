@@ -1,4 +1,3 @@
-mod join_iter;
 mod json_stream;
 mod ndjson_stream;
 mod text_stream;
@@ -44,17 +43,17 @@ impl IntoResponse for LogsResponse {
     fn into_response(self) -> Response {
         match self.response_type {
             LogsResponseType::Raw => {
-                todo!()
-                // let stream = self.stream.map_ok(|mut line| {
-                //     line.push_str("\r\n");
-                //     line
-                // });
+                let stream = self.stream.map_ok(|msg| {
+                    let mut line = msg.to_raw_irc();
+                    line.push_str("\r\n");
+                    line
+                });
 
-                // (
-                //     set_content_type(&TEXT_PLAIN_UTF_8),
-                //     Body::from_stream(stream),
-                // )
-                //     .into_response()
+                (
+                    set_content_type(&TEXT_PLAIN_UTF_8),
+                    Body::from_stream(stream),
+                )
+                    .into_response()
             }
             LogsResponseType::Text => {
                 let stream = TextLogsStream::new(self.stream);

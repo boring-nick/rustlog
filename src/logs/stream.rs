@@ -54,7 +54,7 @@ impl LogsStream {
     }
 }
 
-impl<'a> Stream for LogsStream {
+impl Stream for LogsStream {
     type Item = Result<StructuredMessage<'static>>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {

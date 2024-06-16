@@ -3,8 +3,9 @@ use bitflags::bitflags;
 use clickhouse::Row;
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
-use std::borrow::Cow;
-use strum::EnumString;
+use std::fmt::Write;
+use std::{borrow::Cow, fmt::Debug};
+use strum::{Display, EnumString};
 use tmi::{IrcMessageRef, Tag};
 use uuid::Uuid;
 
@@ -77,7 +78,7 @@ pub struct StructuredMessage<'a> {
     pub channel_login: Cow<'a, str>,
     pub timestamp: u64,
     #[serde(with = "clickhouse::serde::uuid")]
-    pub id: Uuid,
+    id: Uuid,
     pub message_type: MessageType,
     pub user_id: Cow<'a, str>,
     pub user_login: Cow<'a, str>,
@@ -89,7 +90,7 @@ pub struct StructuredMessage<'a> {
     pub client_nonce: Cow<'a, str>,
     pub emotes: Cow<'a, str>,
     pub automod_flags: Cow<'a, str>,
-    pub text: Cow<'a, str>,
+    text: Cow<'a, str>,
     pub message_flags: MessageFlags,
     pub extra_tags: Vec<(Cow<'a, str>, Cow<'a, str>)>,
 }
@@ -120,46 +121,17 @@ impl<'a> StructuredMessage<'a> {
         let message_type = MessageType::from_tmi_command(irc_message.command())
             .with_context(|| format!("Unknown message type {}", irc_message.command()))?;
 
-        let text = match message_type {
-            MessageType::PrivMsg => {
-                if let Some(raw_text) = irc_message.params() {
-                    Cow::Borrowed(extract_message_text(raw_text))
-                } else {
-                    Cow::default()
-                }
+        let text = irc_message
+            .params()
+            .map(|param| param.strip_prefix(':').unwrap_or(param))
+            .map(Cow::Borrowed)
+            .unwrap_or_default();
+        if let MessageType::ClearChat = message_type {
+            if let Some(cleared_user_login) = irc_message.params() {
+                let cleared_user_login = extract_message_text(cleared_user_login);
+                user_login = Cow::Borrowed(cleared_user_login);
             }
-            MessageType::ClearChat => match irc_message.params() {
-                Some(cleared_user_login) => {
-                    let cleared_user_login = extract_message_text(cleared_user_login);
-                    user_login = Cow::Borrowed(cleared_user_login);
-
-                    let text = match irc_message.tag(Tag::BanDuration) {
-                        Some(ban_duration) => {
-                            format!("{cleared_user_login} has been timed out for {ban_duration} seconds")
-                        }
-                        None => {
-                            format!("{cleared_user_login} has been banned")
-                        }
-                    };
-                    Cow::Owned(text)
-                }
-                None => Cow::Borrowed("Chat has been cleared"),
-            },
-            MessageType::UserNotice => {
-                let system_message = irc_message
-                    .tag(Tag::SystemMsg)
-                    .context("System message tag missing")?;
-                let system_message = tmi::unescape(system_message);
-
-                if let Some(user_message) = irc_message.params() {
-                    let user_message = extract_message_text(user_message);
-                    Cow::Owned(format!("{system_message} {user_message}"))
-                } else {
-                    Cow::Owned(system_message)
-                }
-            }
-            _ => Cow::default(),
-        };
+        }
 
         let mut message_flags = MessageFlags::empty();
         let mut extra_tags = Vec::with_capacity(irc_message.tags().count());
@@ -245,6 +217,60 @@ impl<'a> StructuredMessage<'a> {
         })
     }
 
+    pub fn user_friendly_text(&self) -> Cow<'_, str> {
+        match self.message_type {
+            MessageType::PrivMsg => Cow::Borrowed(extract_message_text(&self.text)),
+            MessageType::ClearChat => match self.text.is_empty() {
+                false => {
+                    let cleared_user_login = extract_message_text(&self.text);
+
+                    let text = match self
+                        .extra_tags
+                        .iter()
+                        .find(|(tag, _)| tag == Tag::BanDuration.as_str())
+                        .map(|(_, value)| value)
+                    {
+                        Some(ban_duration) => {
+                            format!("{cleared_user_login} has been timed out for {ban_duration} seconds")
+                        }
+                        None => {
+                            format!("{cleared_user_login} has been banned")
+                        }
+                    };
+                    Cow::Owned(text)
+                }
+                true => Cow::Borrowed("Chat has been cleared"),
+            },
+            MessageType::UserNotice => {
+                if let Some(system_message) = self
+                    .extra_tags
+                    .iter()
+                    .find(|(tag, _)| tag == Tag::SystemMsg.as_str())
+                    .map(|(_, value)| value)
+                {
+                    let system_message = tmi::unescape(system_message);
+                    if !self.text.is_empty() {
+                        let user_message = extract_message_text(&self.text);
+                        Cow::Owned(format!("{system_message} {user_message}"))
+                    } else {
+                        Cow::Owned(system_message)
+                    }
+                } else {
+                    Cow::default()
+                }
+            }
+            _ => Cow::default(),
+        }
+    }
+
+    pub fn id(&self) -> Option<String> {
+        if self.id.is_nil() {
+            None
+        } else {
+            Some(self.id.to_string())
+        }
+    }
+
     pub fn all_tags(&self) -> Vec<(Tag, Cow<'_, str>)> {
         let mut tags = Vec::new();
 
@@ -294,9 +320,55 @@ impl<'a> StructuredMessage<'a> {
 
         tags
     }
+
+    pub fn to_raw_irc(&self) -> String {
+        let mut out = String::with_capacity(self.text.len() * 2);
+        out.push('@');
+
+        let tags = self.all_tags();
+        for (i, (tag, value)) in tags.iter().enumerate() {
+            if i > 0 {
+                out.push(';');
+            }
+            let _ = write!(out, "{tag}={value}");
+        }
+
+        match self.message_type {
+            MessageType::PrivMsg => {
+                let _ = write!(
+                    out,
+                    " :{name}!{name}@{name}.tmi.twitch.tv",
+                    name = self.user_login,
+                );
+            }
+            _ => {
+                let _ = write!(out, " :tmi.twitch.tv");
+            }
+        }
+
+        let _ = write!(
+            out,
+            " {message_type} #{channel}",
+            message_type = self.message_type,
+            channel = self.channel_login,
+        );
+
+        match self.message_type {
+            MessageType::PrivMsg | MessageType::UserNotice => {
+                let _ = write!(out, " :{}", self.text);
+            }
+            _ => {
+                if !self.text.is_empty() {
+                    let _ = write!(out, " {}", self.text);
+                }
+            }
+        }
+
+        out
+    }
 }
 
-#[derive(Serialize_repr, Deserialize_repr, EnumString, Debug, PartialEq)]
+#[derive(Serialize_repr, Deserialize_repr, EnumString, Debug, PartialEq, Display, Clone, Copy)]
 #[repr(u8)]
 #[strum(serialize_all = "UPPERCASE")]
 pub enum MessageType {
@@ -428,5 +500,61 @@ mod tests {
                 .unwrap_or_else(|| panic!("Could not find tag {}", original_tag));
             assert_eq!(original_value, value);
         }
+    }
+
+    fn assert_roundtrip(unstructured: UnstructuredMessage) {
+        let message = StructuredMessage::from_unstructured(&unstructured).unwrap();
+        let converted = message.to_raw_irc();
+
+        let original = IrcMessageRef::parse(&unstructured.raw).unwrap();
+        let converted = IrcMessageRef::parse(&converted).unwrap();
+
+        for (original_tag, original_value) in original.tags() {
+            if MessageFlags::from_tag(&original_tag).is_some() && original_value == "0" {
+                continue;
+            }
+
+            let value = converted
+                .tag(original_tag.clone())
+                .unwrap_or_else(|| panic!("Could not find tag {}", original_tag));
+            println!("Comparing tag {original_tag}");
+            assert_eq!(original_value, value);
+        }
+
+        assert_eq!(original.prefix(), converted.prefix());
+        assert_eq!(original.params(), converted.params());
+    }
+
+    #[test]
+    fn roundtrip_privmsg() {
+        let unstructured = UnstructuredMessage {
+            channel_id: "22484632".into(),
+            user_id: "68136884".into(),
+            timestamp: 1709251274940,
+            raw: "@returning-chatter=0;user-id=68136884;user-type=;badges=vip/1,subscriber/60;mod=0;display-name=Supibot;room-id=22484632;flags=;emotes=;first-msg=0;vip=1;tmi-sent-ts=1709251274940;id=272e342c-5864-4c59-b730-25908cdb7f57;subscriber=1;turbo=0;color=#1E90FF;badge-info=subscriber/65 :supibot!supibot@supibot.tmi.twitch.tv PRIVMSG #forsen :+join 󠀀".into(),
+        };
+        assert_roundtrip(unstructured);
+    }
+
+    #[test]
+    fn roundtrip_usernotice_sub() {
+        let unstructured = UnstructuredMessage {
+            channel_id: "22484632".into(),
+            user_id: "444158477".into(),
+            timestamp: 1686947117960,
+            raw: r"@mod=0;id=0a4b7b50-052e-473e-99ee-441f05ce52a7;login=daney___;msg-param-multimonth-duration=0;display-name=daney___;msg-param-sub-plan-name=Channel\sSubscription\s(forsenlol);msg-param-was-gifted=false;subscriber=1;msg-param-cumulative-months=19;flags=;color=#8A2BE2;msg-param-months=0;user-id=444158477;badges=subscriber/12;user-type=;msg-param-should-share-streak=0;msg-id=resub;emotes=;msg-param-sub-plan=1000;room-id=22484632;system-msg=daney___\ssubscribed\sat\sTier\s1.\sThey've\ssubscribed\sfor\s19\smonths!;tmi-sent-ts=1686947117960;msg-param-multimonth-tenure=0;badge-info=subscriber/19 :tmi.twitch.tv USERNOTICE #forsen :Still here? LULE".into(),
+        };
+        assert_roundtrip(unstructured);
+    }
+
+    #[test]
+    fn roundtrip_roomstate() {
+        let unstructured = UnstructuredMessage {
+            channel_id: "118353866".into(),
+            user_id: "".into(),
+            timestamp: 1686947117960,
+            raw: r"@emote-only=0;followers-only=-1;slow=0;subs-only=0;room-id=118353866;r9k=0 :tmi.twitch.tv ROOMSTATE #twitchmedia_qs_1".into(),
+        };
+        assert_roundtrip(unstructured);
     }
 }

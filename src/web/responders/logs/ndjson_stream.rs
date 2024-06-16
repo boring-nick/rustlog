@@ -1,6 +1,5 @@
 use crate::{
     logs::{
-        parse_messages, parse_raw,
         schema::message::{BasicMessage, ResponseMessage},
         stream::LogsStream,
     },

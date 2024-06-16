@@ -38,9 +38,9 @@ impl Stream for TextLogsStream {
                             chrono::DateTime::from_timestamp_millis(msg.timestamp as i64)
                                 .unwrap_or_default()
                                 .format(TIMESTAMP_FORMAT);
-                        let channel = msg.channel_login;
-                        let username = msg.user_login;
-                        let text = msg.text;
+                        let text = msg.user_friendly_text();
+                        let channel = &msg.channel_login;
+                        let username = &msg.user_login;
 
                         if !username.is_empty() {
                             let _ =
