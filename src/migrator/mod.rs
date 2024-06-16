@@ -2,7 +2,7 @@ mod reader;
 
 use self::reader::{LogsReader, COMPRESSED_CHANNEL_FILE, UNCOMPRESSED_CHANNEL_FILE};
 use crate::{
-    db::schema::{StructuredMessage, MESSAGES_TABLE},
+    db::schema::{StructuredMessage, UnstructuredMessage, MESSAGES_STRUCTURED_TABLE},
     logs::extract::{extract_raw_timestamp, extract_user_id},
     migrator::reader::ChannelLogDateMap,
 };
@@ -25,7 +25,7 @@ use std::{
 };
 use tmi::Command;
 use tokio::sync::Semaphore;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 const INSERT_BATCH_SIZE: u64 = 10_000_000;
 
@@ -105,7 +105,7 @@ impl Migrator {
                     let handle = tokio::spawn(async move {
                         let mut inserter = migrator
                             .db
-                            .inserter(MESSAGES_TABLE)?
+                            .inserter(MESSAGES_STRUCTURED_TABLE)?
                             .with_timeouts(
                                 Some(Duration::from_secs(30)),
                                 Some(Duration::from_secs(180)),
@@ -258,18 +258,23 @@ async fn write_line<'a>(
                 ""
             });
 
-            todo!();
-
-            // let message = Message {
-            //     channel_id: Cow::Borrowed(channel_id),
-            //     user_id: Cow::Borrowed(user_id),
-            //     timestamp,
-            //     raw: Cow::Borrowed(irc_message.raw()),
-            // };
-            // // This is safe because despite the function signature,
-            // // `inserter.write` only uses the value for serialization at the time of the method call, and not later
-            // let message: Message<'static> = unsafe { std::mem::transmute(message) };
-            // inserter.write(&message).await?;
+            let unstructured = UnstructuredMessage {
+                channel_id: Cow::Borrowed(channel_id),
+                user_id: Cow::Borrowed(user_id),
+                timestamp,
+                raw: Cow::Borrowed(irc_message.raw()),
+            };
+            match StructuredMessage::from_unstructured(&unstructured) {
+                Ok(msg) => {
+                    // This is safe because despite the function signature,
+                    // `inserter.write` only uses the value for serialization at the time of the method call, and not later
+                    let msg: StructuredMessage<'static> = unsafe { std::mem::transmute(msg) };
+                    inserter.write(&msg).await?;
+                }
+                Err(err) => {
+                    error!("Could not convert message {unstructured:?}: {err}");
+                }
+            }
         }
         None => {
             warn!("Could not parse message `{raw}`");

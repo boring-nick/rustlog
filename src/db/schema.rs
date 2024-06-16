@@ -9,7 +9,6 @@ use strum::{Display, EnumString};
 use tmi::{IrcMessageRef, Tag};
 use uuid::Uuid;
 
-pub const MESSAGES_TABLE: &str = "message";
 pub const MESSAGES_STRUCTURED_TABLE: &str = "message_structured";
 
 bitflags! {
@@ -365,6 +364,37 @@ impl<'a> StructuredMessage<'a> {
         }
 
         out
+    }
+
+    pub fn into_owned(self) -> StructuredMessage<'static> {
+        StructuredMessage {
+            channel_id: Cow::Owned(self.channel_id.into_owned()),
+            channel_login: Cow::Owned(self.channel_login.into_owned()),
+            timestamp: self.timestamp,
+            id: self.id,
+            message_type: self.message_type,
+            user_id: Cow::Owned(self.user_id.into_owned()),
+            user_login: Cow::Owned(self.user_login.into_owned()),
+            display_name: Cow::Owned(self.display_name.into_owned()),
+            color: self.color,
+            user_type: Cow::Owned(self.user_type.into_owned()),
+            badges: self
+                .badges
+                .into_iter()
+                .map(|value| Cow::Owned(value.into_owned()))
+                .collect(),
+            badge_info: Cow::Owned(self.badge_info.into_owned()),
+            client_nonce: Cow::Owned(self.client_nonce.into_owned()),
+            emotes: Cow::Owned(self.emotes.into_owned()),
+            automod_flags: Cow::Owned(self.automod_flags.into_owned()),
+            text: Cow::Owned(self.text.into_owned()),
+            message_flags: self.message_flags,
+            extra_tags: self
+                .extra_tags
+                .into_iter()
+                .map(|(k, v)| (Cow::Owned(k.into_owned()), Cow::Owned(v.into_owned())))
+                .collect(),
+        }
     }
 }
 

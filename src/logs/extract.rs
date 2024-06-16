@@ -14,12 +14,6 @@ impl MessageWithTags for IRCMessage {
     }
 }
 
-impl MessageWithTags for tmi::IrcMessage {
-    fn get_tag(&self, key: Tag) -> Option<&str> {
-        self.tag(key)
-    }
-}
-
 impl MessageWithTags for tmi::IrcMessageRef<'_> {
     fn get_tag(&self, key: Tag) -> Option<&str> {
         self.tag(key)

@@ -1,6 +1,6 @@
 use crate::{
     app::App,
-    db::schema::StructuredMessage,
+    db::schema::{StructuredMessage, UnstructuredMessage},
     logs::extract::{extract_channel_and_user_from_raw, extract_raw_timestamp},
     ShutdownRx,
 };
@@ -209,14 +209,20 @@ impl Bot {
                 return Ok(());
             }
 
-            // TODO
-            // let message = Message {
-            //     channel_id: Cow::Owned(channel_id.to_owned()),
-            //     user_id: Cow::Owned(user_id),
-            //     timestamp,
-            //     raw: Cow::Owned(irc_message.as_raw_irc()),
-            // };
-            // self.writer_tx.send(message).await?;
+            let unstructured = UnstructuredMessage {
+                channel_id: Cow::Owned(channel_id.to_owned()),
+                user_id: Cow::Owned(user_id),
+                timestamp,
+                raw: Cow::Owned(irc_message.as_raw_irc()),
+            };
+            match StructuredMessage::from_unstructured(&unstructured) {
+                Ok(msg) => {
+                    self.writer_tx.send(msg.into_owned()).await?;
+                }
+                Err(err) => {
+                    error!("Could not convert message {unstructured:?} to be logged: {err}");
+                }
+            }
         }
 
         Ok(())
