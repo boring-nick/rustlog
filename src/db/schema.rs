@@ -135,14 +135,14 @@ impl<'a> StructuredMessage<'a> {
         let mut message_flags = MessageFlags::empty();
         let mut extra_tags = Vec::with_capacity(irc_message.tags().count());
         let mut id = Uuid::nil();
-        let mut display_name = "";
+        let mut display_name = String::new();
         let mut color = None;
-        let mut user_type = "";
-        let mut client_nonce = "";
-        let mut emotes = "";
-        let mut automod_flags = "";
+        let mut user_type = String::new();
+        let mut client_nonce = String::new();
+        let mut emotes = String::new();
+        let mut automod_flags = String::new();
         let mut badges = Vec::new();
-        let mut badge_info = "";
+        let mut badge_info = String::new();
 
         for (tag, value) in irc_message.tags() {
             match tag {
@@ -150,36 +150,39 @@ impl<'a> StructuredMessage<'a> {
                     if let Ok(uuid) = Uuid::parse_str(value) {
                         id = uuid;
                     } else {
-                        extra_tags.push((Cow::Borrowed(Tag::Id.as_str()), Cow::Borrowed(value)));
+                        extra_tags.push((
+                            Cow::Borrowed(Tag::Id.as_str()),
+                            Cow::Owned(tmi::unescape(value)),
+                        ));
                     }
                 }
                 Tag::Login => {
                     user_login = Cow::Borrowed(value);
                 }
                 Tag::DisplayName => {
-                    display_name = value;
+                    display_name = tmi::unescape(value);
                 }
                 Tag::Color => {
                     let raw_color = value.trim_start_matches('#');
                     color = u32::from_str_radix(raw_color, 16).ok();
                 }
                 Tag::UserType => {
-                    user_type = value;
+                    user_type = tmi::unescape(value);
                 }
                 Tag::Badges => {
                     badges = value.split(',').map(Cow::Borrowed).collect();
                 }
                 Tag::BadgeInfo => {
-                    badge_info = value;
+                    badge_info = tmi::unescape(value);
                 }
                 Tag::Emotes => {
-                    emotes = value;
+                    emotes = tmi::unescape(value);
                 }
                 Tag::ClientNonce => {
-                    client_nonce = value;
+                    client_nonce = tmi::unescape(value);
                 }
                 Tag::Flags => {
-                    automod_flags = value;
+                    automod_flags = tmi::unescape(value);
                 }
                 Tag::RoomId | Tag::UserId | Tag::TmiSentTs | Tag::SentTs => (),
                 _ => {
@@ -188,7 +191,10 @@ impl<'a> StructuredMessage<'a> {
                             message_flags.insert(flag);
                         }
                     } else {
-                        extra_tags.push((Cow::Borrowed(tag.as_str()), Cow::Borrowed(value)))
+                        extra_tags.push((
+                            Cow::Borrowed(tag.as_str()),
+                            Cow::Owned(tmi::unescape(value)),
+                        ))
                     }
                 }
             }
@@ -203,14 +209,14 @@ impl<'a> StructuredMessage<'a> {
             message_flags,
             user_id: Cow::Borrowed(&message.user_id),
             user_login,
-            display_name: Cow::Borrowed(display_name),
+            display_name: Cow::Owned(display_name),
             color,
-            user_type: Cow::Borrowed(user_type),
+            user_type: Cow::Owned(user_type),
             badges,
-            badge_info: Cow::Borrowed(badge_info),
-            client_nonce: Cow::Borrowed(client_nonce),
-            automod_flags: Cow::Borrowed(automod_flags),
-            emotes: Cow::Borrowed(emotes),
+            badge_info: Cow::Owned(badge_info),
+            client_nonce: Cow::Owned(client_nonce),
+            automod_flags: Cow::Owned(automod_flags),
+            emotes: Cow::Owned(emotes),
             text,
             extra_tags,
         })
@@ -247,12 +253,11 @@ impl<'a> StructuredMessage<'a> {
                     .find(|(tag, _)| tag == Tag::SystemMsg.as_str())
                     .map(|(_, value)| value)
                 {
-                    let system_message = tmi::unescape(system_message);
                     if !self.text.is_empty() {
                         let user_message = extract_message_text(&self.text);
                         Cow::Owned(format!("{system_message} {user_message}"))
                     } else {
-                        Cow::Owned(system_message)
+                        Cow::Borrowed(system_message)
                     }
                 } else {
                     Cow::default()
@@ -294,27 +299,36 @@ impl<'a> StructuredMessage<'a> {
             tags.push((Tag::Login, Cow::Borrowed(self.user_login.as_ref())));
         }
         if !self.client_nonce.is_empty() {
-            tags.push((Tag::ClientNonce, Cow::Borrowed(self.client_nonce.as_ref())));
+            tags.push((Tag::ClientNonce, Cow::Owned(escape_tag(&self.client_nonce))));
         }
         if !self.display_name.is_empty() {
-            tags.push((Tag::DisplayName, Cow::Borrowed(self.display_name.as_ref())));
+            tags.push((Tag::DisplayName, Cow::Owned(escape_tag(&self.display_name))));
         }
 
-        tags.push((Tag::Badges, Cow::Owned(self.badges.join(","))));
-        tags.push((Tag::BadgeInfo, Cow::Borrowed(self.badge_info.as_ref())));
+        tags.push((
+            Tag::Badges,
+            Cow::Owned(
+                self.badges
+                    .iter()
+                    .map(|value| escape_tag(value))
+                    .collect::<Vec<_>>()
+                    .join(","),
+            ),
+        ));
+        tags.push((Tag::BadgeInfo, Cow::Owned(escape_tag(&self.badge_info))));
 
         if let Some(color) = self.color {
             tags.push((Tag::Color, Cow::Owned(format!("#{color:04X}"))));
         }
 
         tags.extend([
-            (Tag::Flags, Cow::Borrowed(self.automod_flags.as_ref())),
+            (Tag::Flags, Cow::Owned(escape_tag(&self.automod_flags))),
             (Tag::UserType, Cow::Borrowed(self.user_type.as_ref())),
-            (Tag::Emotes, Cow::Borrowed(self.emotes.as_ref())),
+            (Tag::Emotes, Cow::Owned(escape_tag(&self.emotes))),
         ]);
 
         for (tag, value) in &self.extra_tags {
-            tags.push((Tag::parse(tag), Cow::Borrowed(value.as_ref())));
+            tags.push((Tag::parse(tag), Cow::Owned(escape_tag(value))));
         }
 
         tags
@@ -396,6 +410,22 @@ impl<'a> StructuredMessage<'a> {
                 .collect(),
         }
     }
+}
+
+fn escape_tag(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for char in value.chars() {
+        match char {
+            ';' => out.push_str("\\:"),
+            ' ' => out.push_str("\\s"),
+            '\\' => out.push_str("\\\\"),
+            '\r' => out.push_str("\\r"),
+            '\n' => out.push_str("\\n"),
+            ',' => out.push('⸝'),
+            _ => out.push(char),
+        }
+    }
+    out
 }
 
 #[derive(Serialize_repr, Deserialize_repr, EnumString, Debug, PartialEq, Display, Clone, Copy)]

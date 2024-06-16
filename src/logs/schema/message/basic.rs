@@ -34,11 +34,4 @@ impl<'a> ResponseMessage<'a> for BasicMessage<'a> {
                 .collect(),
         })
     }
-
-    fn unescape_tags(&mut self) {
-        for value in self.tags.values_mut() {
-            let new_value = tmi::unescape(value);
-            *value = Cow::Owned(new_value);
-        }
-    }
 }

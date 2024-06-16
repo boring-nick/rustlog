@@ -26,10 +26,6 @@ impl<'a> ResponseMessage<'a> for FullMessage<'a> {
             r#type: msg.message_type,
         })
     }
-
-    fn unescape_tags(&mut self) {
-        self.basic.unescape_tags();
-    }
 }
 
 #[cfg(test)]

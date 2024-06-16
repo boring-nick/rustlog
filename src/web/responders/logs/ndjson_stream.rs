@@ -54,8 +54,7 @@ impl Stream for NdJsonLogsStream {
 
                     let serialized_messages: Vec<_> = messages
                         .into_par_iter()
-                        .map(|mut message| {
-                            message.unescape_tags();
+                        .map(|message| {
                             let mut message_buf = Vec::with_capacity(JSON_MESSAGE_SIZE);
                             serde_json::to_writer(&mut message_buf, &message).unwrap();
                             message_buf
