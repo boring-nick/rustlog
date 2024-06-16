@@ -120,17 +120,24 @@ impl<'a> StructuredMessage<'a> {
         let message_type = MessageType::from_tmi_command(irc_message.command())
             .with_context(|| format!("Unknown message type {}", irc_message.command()))?;
 
-        let text = irc_message
+        let mut text = irc_message
             .params()
-            .map(|param| param.strip_prefix(':').unwrap_or(param))
-            .map(Cow::Borrowed)
-            .unwrap_or_default();
-        if let MessageType::ClearChat = message_type {
-            if let Some(cleared_user_login) = irc_message.params() {
-                let cleared_user_login = extract_message_text(cleared_user_login);
-                user_login = Cow::Borrowed(cleared_user_login);
+            .unwrap_or_default()
+            .trim_start_matches(' ');
+
+        match message_type {
+            MessageType::PrivMsg | MessageType::UserNotice => {
+                text = text.strip_prefix(':').unwrap_or(text);
             }
+            MessageType::ClearChat => {
+                if let Some(cleared_user_login) = irc_message.params() {
+                    let cleared_user_login = extract_message_text(cleared_user_login);
+                    user_login = Cow::Borrowed(cleared_user_login);
+                }
+            }
+            _ => (),
         }
+        let text = Cow::Borrowed(text);
 
         let mut message_flags = MessageFlags::empty();
         let mut extra_tags = Vec::with_capacity(irc_message.tags().count());
@@ -421,7 +428,6 @@ fn escape_tag(value: &str) -> String {
             '\\' => out.push_str("\\\\"),
             '\r' => out.push_str("\\r"),
             '\n' => out.push_str("\\n"),
-            ',' => out.push('⸝'),
             _ => out.push(char),
         }
     }
@@ -473,12 +479,7 @@ impl MessageType {
     }
 }
 
-fn extract_message_text(message_text: &str) -> &str {
-    let mut message_text = message_text
-        .strip_prefix(':')
-        .unwrap_or(message_text)
-        .trim_start();
-
+fn extract_message_text(mut message_text: &str) -> &str {
     let is_action =
         message_text.starts_with("\u{0001}ACTION ") && message_text.ends_with('\u{0001}');
     if is_action {
