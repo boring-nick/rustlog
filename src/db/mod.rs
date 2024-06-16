@@ -3,6 +3,7 @@ pub mod schema;
 pub mod writer;
 
 pub use migrations::run as setup_db;
+use schema::{StructuredMessage, MESSAGES_STRUCTURED_TABLE};
 
 use crate::{
     error::Error,
@@ -28,12 +29,12 @@ pub async fn read_channel(
         "ASC"
     };
 
-    let mut query = format!("SELECT raw FROM message WHERE channel_id = ? AND timestamp >= ? AND timestamp < ? ORDER BY timestamp {suffix}");
+    let mut query = format!("SELECT ?fields FROM message_structured WHERE channel_id = ? AND timestamp >= ? AND timestamp < ? ORDER BY timestamp {suffix}");
 
     let interval = Duration::days(CHANNEL_MULTI_QUERY_SIZE_DAYS);
     if params.to - params.from > interval {
         let count = db
-            .query("SELECT count() FROM (SELECT timestamp FROM message WHERE channel_id = ? AND timestamp >= ? AND timestamp < ? LIMIT 1)")
+            .query("SELECT count() FROM (SELECT timestamp FROM message_structured WHERE channel_id = ? AND timestamp >= ? AND timestamp < ? LIMIT 1)")
             .bind(channel_id)
             .bind(params.from.timestamp_millis() as f64 / 1000.0)
             .bind(params.to.timestamp_millis() as f64 / 1000.0)
@@ -91,7 +92,7 @@ fn next_cursor(
     channel_id: &str,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
-) -> Result<RowCursor<String>> {
+) -> Result<RowCursor<StructuredMessage<'static>>> {
     let cursor = db
         .query(query)
         .bind(channel_id)
@@ -183,7 +184,11 @@ pub async fn read_available_user_logs(
     Ok(dates)
 }
 
-pub async fn read_random_user_line(db: &Client, channel_id: &str, user_id: &str) -> Result<String> {
+pub async fn read_random_user_line(
+    db: &Client,
+    channel_id: &str,
+    user_id: &str,
+) -> Result<StructuredMessage<'static>> {
     let total_count = db
         .query("SELECT count(*) FROM message WHERE channel_id = ? AND user_id = ? ")
         .bind(channel_id)
@@ -200,26 +205,30 @@ pub async fn read_random_user_line(db: &Client, channel_id: &str, user_id: &str)
         (0..total_count).choose(&mut rng).ok_or(Error::NotFound)
     }?;
 
-    let text = db
-        .query(
-            "WITH
-            (SELECT timestamp FROM message WHERE channel_id = ? AND user_id = ? LIMIT 1 OFFSET ?)
-            AS random_timestamp
-            SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND timestamp = random_timestamp",
-        )
-        .bind(channel_id)
-        .bind(user_id)
-        .bind(offset)
-        .bind(channel_id)
-        .bind(user_id)
-        .fetch_optional::<String>()
-        .await?
-        .ok_or(Error::NotFound)?;
+    todo!()
+    // let text = db
+    //     .query(
+    //         "WITH
+    //         (SELECT timestamp FROM message WHERE channel_id = ? AND user_id = ? LIMIT 1 OFFSET ?)
+    //         AS random_timestamp
+    //         SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND timestamp = random_timestamp",
+    //     )
+    //     .bind(channel_id)
+    //     .bind(user_id)
+    //     .bind(offset)
+    //     .bind(channel_id)
+    //     .bind(user_id)
+    //     .fetch_optional::<String>()
+    //     .await?
+    //     .ok_or(Error::NotFound)?;
 
-    Ok(text)
+    // Ok(text)
 }
 
-pub async fn read_random_channel_line(db: &Client, channel_id: &str) -> Result<String> {
+pub async fn read_random_channel_line(
+    db: &Client,
+    channel_id: &str,
+) -> Result<StructuredMessage<'static>> {
     let total_count = db
         .query("SELECT count(*) FROM message WHERE channel_id = ? ")
         .bind(channel_id)
@@ -234,22 +243,23 @@ pub async fn read_random_channel_line(db: &Client, channel_id: &str) -> Result<S
         let mut rng = thread_rng();
         (0..total_count).choose(&mut rng).ok_or(Error::NotFound)
     }?;
+    todo!()
 
-    let text = db
-        .query(
-            "WITH
-            (SELECT timestamp FROM message WHERE channel_id = ? LIMIT 1 OFFSET ?)
-            AS random_timestamp
-            SELECT raw FROM message WHERE channel_id = ? AND timestamp = random_timestamp",
-        )
-        .bind(channel_id)
-        .bind(offset)
-        .bind(channel_id)
-        .fetch_optional::<String>()
-        .await?
-        .ok_or(Error::NotFound)?;
+    // let text = db
+    //     .query(
+    //         "WITH
+    //         (SELECT timestamp FROM message WHERE channel_id = ? LIMIT 1 OFFSET ?)
+    //         AS random_timestamp
+    //         SELECT raw FROM message WHERE channel_id = ? AND timestamp = random_timestamp",
+    //     )
+    //     .bind(channel_id)
+    //     .bind(offset)
+    //     .bind(channel_id)
+    //     .fetch_optional::<String>()
+    //     .await?
+    //     .ok_or(Error::NotFound)?;
 
-    Ok(text)
+    // Ok(text)
 }
 
 pub async fn delete_user_logs(_db: &Client, _user_id: &str) -> Result<()> {

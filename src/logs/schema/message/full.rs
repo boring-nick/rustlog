@@ -1,5 +1,5 @@
 use super::{BasicMessage, ResponseMessage};
-use crate::db::schema::MessageType;
+use crate::db::schema::{MessageType, StructuredMessage};
 use anyhow::{anyhow, Context};
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -21,6 +21,16 @@ pub struct FullMessage<'a> {
 }
 
 impl<'a> ResponseMessage<'a> for FullMessage<'a> {
+    fn from_structured(msg: &'a StructuredMessage<'a>) -> anyhow::Result<Self> {
+        Ok(Self {
+            basic: todo!(),
+            username: todo!(),
+            channel: todo!(),
+            raw: todo!(),
+            r#type: todo!(),
+        })
+    }
+
     fn from_irc_message(irc_message: &'a tmi::IrcMessageRef<'_>) -> anyhow::Result<Self> {
         let channel = irc_message
             .channel()
@@ -76,21 +86,6 @@ impl<'a> ResponseMessage<'a> for FullMessage<'a> {
     }
 }
 
-impl<'a> Display for FullMessage<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let timestamp = self.basic.timestamp.format(TIMESTAMP_FORMAT);
-        let channel = &self.channel;
-        let username = &self.username;
-        let text = &self.basic.text;
-
-        if !username.is_empty() {
-            write!(f, "[{timestamp}] #{channel} {username}: {text}")
-        } else {
-            write!(f, "[{timestamp}] #{channel} {text}")
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{FullMessage, MessageType};
@@ -112,7 +107,7 @@ mod tests {
                 ),
                 display_name: "Snusbot",
                 timestamp: Utc.timestamp_millis_opt(1489263601000).unwrap(),
-                id: "",
+                id: "".into(),
                 tags: [
                     ("mod", "0"),
                     ("color", ""),

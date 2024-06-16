@@ -1,4 +1,5 @@
 use crate::{
+    db::schema::StructuredMessage,
     logs::{
         parse_messages, parse_raw,
         schema::message::{BasicMessage, FullMessage, ResponseMessage},
@@ -14,6 +15,7 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::pin;
+use tracing::error;
 
 const HEADER: &str = r#"{"messages":["#;
 const FOOTER: &str = r#"]}"#;
@@ -46,11 +48,20 @@ impl JsonLogsStream {
 
     fn serialize_chunk<'a, T: ResponseMessage<'a>>(
         &mut self,
-        irc_messages: &'a [tmi::IrcMessageRef],
+        messages: &'a [StructuredMessage<'a>],
     ) -> Vec<u8> {
-        let mut messages: VecDeque<T> = parse_messages(irc_messages).collect();
+        let mut messages: VecDeque<T> = messages
+            .iter()
+            .filter_map(|msg| match T::from_structured(msg) {
+                Ok(parsed) => Some(parsed),
+                Err(err) => {
+                    error!("Could not parse message {msg:?} from DB: {err}");
+                    None
+                }
+            })
+            .collect();
 
-        let mut buf = Vec::with_capacity(JSON_MESSAGE_SIZE * irc_messages.len());
+        let mut buf = Vec::with_capacity(JSON_MESSAGE_SIZE * messages.len());
 
         if self.is_start {
             buf.extend_from_slice(HEADER.as_bytes());
@@ -95,14 +106,9 @@ impl Stream for JsonLogsStream {
         match fut.poll(cx) {
             Poll::Ready(Some(result)) => match result {
                 Ok(chunk) => {
-                    let irc_messages = parse_raw(&chunk);
                     let buf = match self.response_type {
-                        JsonResponseType::Basic => {
-                            self.serialize_chunk::<BasicMessage>(&irc_messages)
-                        }
-                        JsonResponseType::Full => {
-                            self.serialize_chunk::<FullMessage>(&irc_messages)
-                        }
+                        JsonResponseType::Basic => self.serialize_chunk::<BasicMessage>(&chunk),
+                        JsonResponseType::Full => self.serialize_chunk::<FullMessage>(&chunk),
                     };
 
                     Poll::Ready(Some(Ok(buf)))

@@ -72,7 +72,7 @@ ORDER BY (channel_id, user_id, timestamp)
         );
 
         let i = Arc::new(AtomicU64::new(1));
-        let semaphore = Arc::new(Semaphore::new(8));
+        let semaphore = Arc::new(Semaphore::new(4));
 
         let started_at = Instant::now();
 

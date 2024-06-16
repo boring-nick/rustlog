@@ -44,16 +44,17 @@ impl IntoResponse for LogsResponse {
     fn into_response(self) -> Response {
         match self.response_type {
             LogsResponseType::Raw => {
-                let stream = self.stream.map_ok(|mut line| {
-                    line.push_str("\r\n");
-                    line
-                });
+                todo!()
+                // let stream = self.stream.map_ok(|mut line| {
+                //     line.push_str("\r\n");
+                //     line
+                // });
 
-                (
-                    set_content_type(&TEXT_PLAIN_UTF_8),
-                    Body::from_stream(stream),
-                )
-                    .into_response()
+                // (
+                //     set_content_type(&TEXT_PLAIN_UTF_8),
+                //     Body::from_stream(stream),
+                // )
+                //     .into_response()
             }
             LogsResponseType::Text => {
                 let stream = TextLogsStream::new(self.stream);

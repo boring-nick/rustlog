@@ -6,6 +6,8 @@ use serde::Serialize;
 use std::{borrow::Cow, collections::HashMap};
 use tmi::{Command, Tag};
 
+use crate::db::schema::StructuredMessage;
+
 use super::ResponseMessage;
 
 #[derive(Serialize, JsonSchema, Debug, PartialEq)]
@@ -15,11 +17,26 @@ pub struct BasicMessage<'a> {
     pub display_name: &'a str,
     #[schemars(with = "String")]
     pub timestamp: DateTime<Utc>,
-    pub id: &'a str,
+    pub id: Cow<'a, str>,
     pub tags: HashMap<&'a str, Cow<'a, str>>,
 }
 
 impl<'a> ResponseMessage<'a> for BasicMessage<'a> {
+    fn from_structured(msg: &'a StructuredMessage<'a>) -> anyhow::Result<Self> {
+        Ok(Self {
+            text: Cow::Borrowed(msg.text.as_ref()),
+            display_name: &msg.display_name,
+            timestamp: chrono::DateTime::from_timestamp_millis(msg.timestamp.try_into()?)
+                .context("Invalid timestamp")?,
+            id: msg.id.to_string().into(),
+            tags: msg
+                .all_tags()
+                .into_iter()
+                .map(|(tag, value)| (tag.as_str(), value))
+                .collect(),
+        })
+    }
+
     fn from_irc_message(irc_message: &'a tmi::IrcMessageRef<'_>) -> anyhow::Result<Self> {
         let raw_timestamp = irc_message
             .tag(Tag::TmiSentTs)
@@ -50,7 +67,7 @@ impl<'a> ResponseMessage<'a> for BasicMessage<'a> {
                     text: Cow::Borrowed(text),
                     display_name,
                     timestamp,
-                    id,
+                    id: Cow::Borrowed(id),
                     tags: response_tags,
                 })
             }
@@ -80,7 +97,7 @@ impl<'a> ResponseMessage<'a> for BasicMessage<'a> {
                     text: Cow::Owned(text),
                     display_name: username.unwrap_or_default(),
                     timestamp,
-                    id: "",
+                    id: "".into(),
                     tags: response_tags,
                 })
             }
@@ -111,7 +128,7 @@ impl<'a> ResponseMessage<'a> for BasicMessage<'a> {
                     text,
                     display_name,
                     timestamp,
-                    id,
+                    id: Cow::Borrowed(id),
                     tags: response_tags,
                 })
             }

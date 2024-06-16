@@ -1,17 +1,14 @@
-use super::join_iter::JoinIter;
-use crate::{
-    logs::{parse_messages, parse_raw, schema::message::FullMessage, stream::LogsStream},
-    Result,
-};
+use crate::{logs::stream::LogsStream, Result};
 use futures::{stream::TryChunks, Future, Stream, StreamExt, TryStreamExt};
-use rayon::prelude::ParallelIterator;
 use std::{
+    fmt::Write,
     pin::Pin,
     task::{Context, Poll},
 };
 use tokio::pin;
 
 const CHUNK_SIZE: usize = 3000;
+const TIMESTAMP_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
 pub struct TextLogsStream {
     inner: TryChunks<LogsStream>,
@@ -34,13 +31,26 @@ impl Stream for TextLogsStream {
         fut.poll(cx).map(|item| {
             item.map(|result| match result {
                 Ok(chunk) => {
-                    let irc_messages = parse_raw(&chunk);
-                    let messages: Vec<FullMessage> = parse_messages(&irc_messages).collect();
+                    let mut output = String::with_capacity(chunk.len() * 16);
 
-                    let mut text = messages.iter().join("\r\n").to_string();
-                    text.push_str("\r\n");
+                    for msg in chunk {
+                        let timestamp =
+                            chrono::DateTime::from_timestamp_millis(msg.timestamp as i64)
+                                .unwrap_or_default()
+                                .format(TIMESTAMP_FORMAT);
+                        let channel = msg.channel_login;
+                        let username = msg.user_login;
+                        let text = msg.text;
 
-                    Ok(text)
+                        if !username.is_empty() {
+                            let _ =
+                                write!(output, "[{timestamp}] #{channel} {username}: {text}\r\n");
+                        } else {
+                            let _ = write!(output, "[{timestamp}] #{channel} {text}\r\n");
+                        }
+                    }
+
+                    Ok(output)
                 }
                 Err(err) => Err(err.1),
             })

@@ -13,6 +13,7 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::pin;
+use tracing::error;
 
 /// Rough estimation of how big a single message is in JSON format
 const JSON_MESSAGE_SIZE: usize = 1024;
@@ -39,8 +40,16 @@ impl Stream for NdJsonLogsStream {
         fut.poll(cx).map(|maybe_result| {
             maybe_result.map(|result| match result {
                 Ok(chunk) => {
-                    let irc_messages = parse_raw(&chunk);
-                    let messages: Vec<BasicMessage> = parse_messages(&irc_messages).collect();
+                    let messages: Vec<BasicMessage> = chunk
+                        .iter()
+                        .filter_map(|msg| match BasicMessage::from_structured(msg) {
+                            Ok(parsed) => Some(parsed),
+                            Err(err) => {
+                                error!("Could not parse message {msg:?} from DB: {err}");
+                                None
+                            }
+                        })
+                        .collect();
 
                     let mut buf = Vec::with_capacity(JSON_MESSAGE_SIZE * messages.len());
 
