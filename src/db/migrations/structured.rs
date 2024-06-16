@@ -1,7 +1,8 @@
 use super::migratable::Migratable;
 use crate::db::schema::{StructuredMessage, UnstructuredMessage, MESSAGES_STRUCTURED_TABLE};
-use anyhow::Context;
+use anyhow::{bail, Context};
 use std::{
+    env,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -65,6 +66,16 @@ ORDER BY (channel_id, user_id, timestamp)
             .fetch_all::<String>()
             .await
             .context("Could not fetch partition list")?;
+
+        if partitions.len() > 1
+            && env::var("RUSTLOG_ACKNOWLEDGE_STRUCTURE_MIGRATION").as_deref() != Ok("1")
+        {
+            bail!(
+                "The current version of rustlog needs to perform a migration to a new database structure. This process can take from a few minutes to several hours depending on the database size. \
+                The database will also increase in size up to a factor of 1.5x in the process, but after it's done it will become smaller. \
+                Set the environment variable RUSTLOG_ACKNOWLEDGE_STRUCTURE_MIGRATION=1 to confirm and run the migration, or downgrade to an older version if you don't want to run it right now."
+            );
+        }
 
         info!(
             "Migrating {} partitions to new table structure",
