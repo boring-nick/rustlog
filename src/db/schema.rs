@@ -142,14 +142,14 @@ impl<'a> StructuredMessage<'a> {
         let mut message_flags = MessageFlags::empty();
         let mut extra_tags = Vec::new();
         let mut id = Uuid::nil();
-        let mut display_name = String::new();
+        let mut display_name = Cow::default();
         let mut color = None;
-        let mut user_type = String::new();
-        let mut client_nonce = String::new();
-        let mut emotes = String::new();
-        let mut automod_flags = String::new();
+        let mut user_type = Cow::default();
+        let mut client_nonce = Cow::default();
+        let mut emotes = Cow::default();
+        let mut automod_flags = Cow::default();
         let mut badges = Vec::new();
-        let mut badge_info = String::new();
+        let mut badge_info = Cow::default();
 
         for (tag, value) in irc_message.tags() {
             let tag = Tag::parse(tag);
@@ -158,39 +158,37 @@ impl<'a> StructuredMessage<'a> {
                     if let Ok(uuid) = Uuid::parse_str(value) {
                         id = uuid;
                     } else {
-                        extra_tags.push((
-                            Cow::Borrowed(Tag::Id.as_str()),
-                            Cow::Owned(tmi::unescape(value)),
-                        ));
+                        extra_tags
+                            .push((Cow::Borrowed(Tag::Id.as_str()), tmi::maybe_unescape(value)));
                     }
                 }
                 Tag::Login => {
                     user_login = Cow::Borrowed(value);
                 }
                 Tag::DisplayName => {
-                    display_name = tmi::unescape(value);
+                    display_name = tmi::maybe_unescape(value);
                 }
                 Tag::Color => {
                     let raw_color = value.trim_start_matches('#');
                     color = u32::from_str_radix(raw_color, 16).ok();
                 }
                 Tag::UserType => {
-                    user_type = tmi::unescape(value);
+                    user_type = tmi::maybe_unescape(value);
                 }
                 Tag::Badges => {
                     badges = value.split(',').map(Cow::Borrowed).collect();
                 }
                 Tag::BadgeInfo => {
-                    badge_info = tmi::unescape(value);
+                    badge_info = tmi::maybe_unescape(value);
                 }
                 Tag::Emotes => {
-                    emotes = tmi::unescape(value);
+                    emotes = tmi::maybe_unescape(value);
                 }
                 Tag::ClientNonce => {
-                    client_nonce = tmi::unescape(value);
+                    client_nonce = tmi::maybe_unescape(value);
                 }
                 Tag::Flags => {
-                    automod_flags = tmi::unescape(value);
+                    automod_flags = tmi::maybe_unescape(value);
                 }
                 Tag::RoomId | Tag::UserId | Tag::TmiSentTs | Tag::SentTs => (),
                 _ => {
@@ -199,10 +197,7 @@ impl<'a> StructuredMessage<'a> {
                             message_flags.insert(flag);
                         }
                     } else {
-                        extra_tags.push((
-                            Cow::Borrowed(tag.as_str()),
-                            Cow::Owned(tmi::unescape(value)),
-                        ))
+                        extra_tags.push((Cow::Borrowed(tag.as_str()), tmi::maybe_unescape(value)))
                     }
                 }
             }
@@ -217,14 +212,14 @@ impl<'a> StructuredMessage<'a> {
             message_flags,
             user_id: Cow::Borrowed(message.user_id),
             user_login,
-            display_name: Cow::Owned(display_name),
+            display_name,
             color,
-            user_type: Cow::Owned(user_type),
+            user_type,
             badges,
-            badge_info: Cow::Owned(badge_info),
-            client_nonce: Cow::Owned(client_nonce),
-            automod_flags: Cow::Owned(automod_flags),
-            emotes: Cow::Owned(emotes),
+            badge_info,
+            client_nonce,
+            automod_flags,
+            emotes,
             text,
             extra_tags,
         })
