@@ -30,8 +30,8 @@ impl App {
         let mut names_to_request = Vec::new();
 
         if ignore_cache {
-            ids_to_request = ids.clone();
-            names_to_request = names.clone();
+            ids_to_request.clone_from(&ids);
+            names_to_request.clone_from(&names);
         } else {
             for id in ids {
                 match self.users.get_login(&id) {

@@ -1,12 +1,14 @@
 mod migratable;
+mod structured;
 
 use crate::Result;
 use clickhouse::Client;
+use structured::StructuredMigration;
 use tracing::{debug, info};
 
 use self::migratable::Migratable;
 
-pub async fn run(db: &Client) -> Result<()> {
+pub async fn run(db: &Client, db_name: &str) -> Result<()> {
     create_migrations_table(db).await?;
 
     run_migration(
@@ -66,6 +68,8 @@ String CODEC(ZSTD(10))
     ",
     )
     .await?;
+
+    run_migration(db, "6_structured_message", StructuredMigration { db_name }).await?;
 
     Ok(())
 }

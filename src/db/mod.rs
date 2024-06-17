@@ -13,6 +13,7 @@ use crate::{
 use chrono::{DateTime, Datelike, Duration, Utc};
 use clickhouse::{query::RowCursor, Client};
 use rand::{seq::IteratorRandom, thread_rng};
+use schema::StructuredMessage;
 use tracing::debug;
 
 const CHANNEL_MULTI_QUERY_SIZE_DAYS: i64 = 14;
@@ -28,12 +29,12 @@ pub async fn read_channel(
         "ASC"
     };
 
-    let mut query = format!("SELECT raw FROM message WHERE channel_id = ? AND timestamp >= ? AND timestamp < ? ORDER BY timestamp {suffix}");
+    let mut query = format!("SELECT ?fields FROM message_structured WHERE channel_id = ? AND timestamp >= ? AND timestamp < ? ORDER BY timestamp {suffix}");
 
     let interval = Duration::days(CHANNEL_MULTI_QUERY_SIZE_DAYS);
     if params.to - params.from > interval {
         let count = db
-            .query("SELECT count() FROM (SELECT timestamp FROM message WHERE channel_id = ? AND timestamp >= ? AND timestamp < ? LIMIT 1)")
+            .query("SELECT count() FROM (SELECT timestamp FROM message_structured WHERE channel_id = ? AND timestamp >= ? AND timestamp < ? LIMIT 1)")
             .bind(channel_id)
             .bind(params.from.timestamp_millis() as f64 / 1000.0)
             .bind(params.to.timestamp_millis() as f64 / 1000.0)
@@ -91,7 +92,7 @@ fn next_cursor(
     channel_id: &str,
     from: DateTime<Utc>,
     to: DateTime<Utc>,
-) -> Result<RowCursor<String>> {
+) -> Result<RowCursor<StructuredMessage<'static>>> {
     let cursor = db
         .query(query)
         .bind(channel_id)
@@ -112,7 +113,7 @@ pub async fn read_user(
     } else {
         "ASC"
     };
-    let mut query = format!("SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND timestamp >= ? AND timestamp < ? ORDER BY timestamp {suffix}");
+    let mut query = format!("SELECT * FROM message_structured WHERE channel_id = ? AND user_id = ? AND timestamp >= ? AND timestamp < ? ORDER BY timestamp {suffix}");
     apply_limit_offset(
         &mut query,
         params.logs_params.limit,
@@ -135,7 +136,7 @@ pub async fn read_available_channel_logs(
 ) -> Result<Vec<AvailableLogDate>> {
     let timestamps: Vec<i32> = db
         .query(
-            "SELECT toDateTime(toStartOfDay(timestamp)) AS date FROM message WHERE channel_id = ? GROUP BY date ORDER BY date DESC",
+            "SELECT toDateTime(toStartOfDay(timestamp)) AS date FROM message_structured WHERE channel_id = ? GROUP BY date ORDER BY date DESC",
         )
         .bind(channel_id)
         .fetch_all().await?;
@@ -162,7 +163,7 @@ pub async fn read_available_user_logs(
     user_id: &str,
 ) -> Result<Vec<AvailableLogDate>> {
     let timestamps: Vec<i32> = db
-        .query("SELECT toDateTime(toStartOfMonth(timestamp)) AS date FROM message WHERE channel_id = ? AND user_id = ? GROUP BY date ORDER BY date DESC")
+        .query("SELECT toDateTime(toStartOfMonth(timestamp)) AS date FROM message_structured WHERE channel_id = ? AND user_id = ? GROUP BY date ORDER BY date DESC")
         .bind(channel_id)
         .bind(user_id)
         .fetch_all().await?;
@@ -183,9 +184,13 @@ pub async fn read_available_user_logs(
     Ok(dates)
 }
 
-pub async fn read_random_user_line(db: &Client, channel_id: &str, user_id: &str) -> Result<String> {
+pub async fn read_random_user_line(
+    db: &Client,
+    channel_id: &str,
+    user_id: &str,
+) -> Result<StructuredMessage<'static>> {
     let total_count = db
-        .query("SELECT count(*) FROM message WHERE channel_id = ? AND user_id = ? ")
+        .query("SELECT count(*) FROM message_structured WHERE channel_id = ? AND user_id = ? ")
         .bind(channel_id)
         .bind(user_id)
         .fetch_one::<u64>()
@@ -200,28 +205,31 @@ pub async fn read_random_user_line(db: &Client, channel_id: &str, user_id: &str)
         (0..total_count).choose(&mut rng).ok_or(Error::NotFound)
     }?;
 
-    let text = db
+    let msg = db
         .query(
             "WITH
-            (SELECT timestamp FROM message WHERE channel_id = ? AND user_id = ? LIMIT 1 OFFSET ?)
+            (SELECT timestamp FROM message_structured WHERE channel_id = ? AND user_id = ? LIMIT 1 OFFSET ?)
             AS random_timestamp
-            SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND timestamp = random_timestamp",
+            SELECT * FROM message_structured WHERE channel_id = ? AND user_id = ? AND timestamp = random_timestamp",
         )
         .bind(channel_id)
         .bind(user_id)
         .bind(offset)
         .bind(channel_id)
         .bind(user_id)
-        .fetch_optional::<String>()
+        .fetch_optional::<StructuredMessage>()
         .await?
         .ok_or(Error::NotFound)?;
 
-    Ok(text)
+    Ok(msg)
 }
 
-pub async fn read_random_channel_line(db: &Client, channel_id: &str) -> Result<String> {
+pub async fn read_random_channel_line(
+    db: &Client,
+    channel_id: &str,
+) -> Result<StructuredMessage<'static>> {
     let total_count = db
-        .query("SELECT count(*) FROM message WHERE channel_id = ? ")
+        .query("SELECT count(*) FROM message_structured WHERE channel_id = ? ")
         .bind(channel_id)
         .fetch_one::<u64>()
         .await?;
@@ -235,21 +243,21 @@ pub async fn read_random_channel_line(db: &Client, channel_id: &str) -> Result<S
         (0..total_count).choose(&mut rng).ok_or(Error::NotFound)
     }?;
 
-    let text = db
+    let msg = db
         .query(
             "WITH
-            (SELECT timestamp FROM message WHERE channel_id = ? LIMIT 1 OFFSET ?)
+            (SELECT timestamp FROM message_structured WHERE channel_id = ? LIMIT 1 OFFSET ?)
             AS random_timestamp
-            SELECT raw FROM message WHERE channel_id = ? AND timestamp = random_timestamp",
+            SELECT * FROM message_structured WHERE channel_id = ? AND timestamp = random_timestamp",
         )
         .bind(channel_id)
         .bind(offset)
         .bind(channel_id)
-        .fetch_optional::<String>()
+        .fetch_optional::<StructuredMessage>()
         .await?
         .ok_or(Error::NotFound)?;
 
-    Ok(text)
+    Ok(msg)
 }
 
 pub async fn delete_user_logs(_db: &Client, _user_id: &str) -> Result<()> {
@@ -270,7 +278,7 @@ pub async fn search_user_logs(
 ) -> Result<LogsStream> {
     let suffix = if params.reverse { "DESC" } else { "ASC" };
 
-    let mut query = format!("SELECT raw FROM message WHERE channel_id = ? AND user_id = ? AND positionCaseInsensitive(raw, ?) != 0 ORDER BY timestamp {suffix}");
+    let mut query = format!("SELECT * FROM message_structured WHERE channel_id = ? AND user_id = ? AND positionCaseInsensitive(text, ?) != 0 ORDER BY timestamp {suffix}");
     apply_limit_offset(&mut query, params.limit, params.offset);
 
     let cursor = db

@@ -1,6 +1,6 @@
 use crate::{
     app::App,
-    db::schema::Message,
+    db::schema::{StructuredMessage, UnstructuredMessage},
     logs::extract::{extract_channel_and_user_from_raw, extract_raw_timestamp},
     ShutdownRx,
 };
@@ -8,7 +8,7 @@ use anyhow::{anyhow, Context};
 use chrono::Utc;
 use lazy_static::lazy_static;
 use prometheus::{register_int_counter_vec, IntCounterVec};
-use std::{borrow::Cow, time::Duration};
+use std::time::Duration;
 use tokio::{
     sync::mpsc::{Receiver, Sender},
     time::sleep,
@@ -45,7 +45,7 @@ const COMMAND_PREFIX: &str = "!rustlog ";
 pub async fn run<C: LoginCredentials>(
     login_credentials: C,
     app: App,
-    writer_tx: Sender<Message<'static>>,
+    writer_tx: Sender<StructuredMessage<'static>>,
     shutdown_rx: ShutdownRx,
     command_rx: Receiver<BotMessage>,
 ) {
@@ -56,11 +56,11 @@ pub async fn run<C: LoginCredentials>(
 #[derive(Clone)]
 struct Bot {
     app: App,
-    writer_tx: Sender<Message<'static>>,
+    writer_tx: Sender<StructuredMessage<'static>>,
 }
 
 impl Bot {
-    pub fn new(app: App, writer_tx: Sender<Message<'static>>) -> Bot {
+    pub fn new(app: App, writer_tx: Sender<StructuredMessage<'static>>) -> Bot {
         Self { app, writer_tx }
     }
 
@@ -209,13 +209,21 @@ impl Bot {
                 return Ok(());
             }
 
-            let message = Message {
-                channel_id: Cow::Owned(channel_id.to_owned()),
-                user_id: Cow::Owned(user_id),
+            let raw_irc = irc_message.as_raw_irc();
+            let unstructured = UnstructuredMessage {
+                channel_id,
+                user_id: &user_id,
                 timestamp,
-                raw: Cow::Owned(irc_message.as_raw_irc()),
+                raw: &raw_irc,
             };
-            self.writer_tx.send(message).await?;
+            match StructuredMessage::from_unstructured(&unstructured) {
+                Ok(msg) => {
+                    self.writer_tx.send(msg.into_owned()).await?;
+                }
+                Err(err) => {
+                    error!("Could not convert message {unstructured:?} to be logged: {err}");
+                }
+            }
         }
 
         Ok(())

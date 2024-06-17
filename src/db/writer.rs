@@ -1,5 +1,5 @@
-use super::schema::Message;
-use crate::{db::schema::MESSAGES_TABLE, ShutdownRx};
+use super::schema::StructuredMessage;
+use crate::{db::schema::MESSAGES_STRUCTURED_TABLE, ShutdownRx};
 use anyhow::{anyhow, Context};
 use clickhouse::Client;
 use lazy_static::lazy_static;
@@ -29,7 +29,7 @@ pub async fn create_writer(
     db: Client,
     mut shutdown_rx: ShutdownRx,
     flush_interval: u64,
-) -> anyhow::Result<(Sender<Message<'static>>, JoinHandle<()>)> {
+) -> anyhow::Result<(Sender<StructuredMessage<'static>>, JoinHandle<()>)> {
     let (tx, rx) = channel(CHUNK_CAPACITY);
 
     let chunks_stream =
@@ -62,7 +62,10 @@ pub async fn create_writer(
     Ok((tx, handle))
 }
 
-async fn write_chunk_with_retry(db: &Client, messages: Vec<Message<'_>>) -> anyhow::Result<()> {
+async fn write_chunk_with_retry(
+    db: &Client,
+    messages: Vec<StructuredMessage<'_>>,
+) -> anyhow::Result<()> {
     for attempt in 1..=RETRY_COUNT {
         match write_chunk(db, &messages).await {
             Ok(()) => {
@@ -72,7 +75,7 @@ async fn write_chunk_with_retry(db: &Client, messages: Vec<Message<'_>>) -> anyh
                 return Ok(());
             }
             Err(err) => {
-                error!("Could not insert chunk: {err} (attempt {attempt}/{RETRY_COUNT}, retrying in {RETRY_INTERVAL_SECONDS} seconds)");
+                error!("Could not insert chunk: {err:#} (attempt {attempt}/{RETRY_COUNT}, retrying in {RETRY_INTERVAL_SECONDS} seconds)");
                 sleep(Duration::from_secs(RETRY_INTERVAL_SECONDS)).await;
             }
         }
@@ -82,10 +85,10 @@ async fn write_chunk_with_retry(db: &Client, messages: Vec<Message<'_>>) -> anyh
     ))
 }
 
-async fn write_chunk(db: &Client, messages: &[Message<'_>]) -> anyhow::Result<()> {
+async fn write_chunk(db: &Client, messages: &[StructuredMessage<'_>]) -> anyhow::Result<()> {
     let started_at = Instant::now();
 
-    let mut insert = db.insert(MESSAGES_TABLE)?;
+    let mut insert = db.insert(MESSAGES_STRUCTURED_TABLE)?;
     for message in messages {
         insert.write(message).await.context("Could not write row")?;
     }

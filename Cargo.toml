@@ -11,7 +11,9 @@ chrono = { version = "0.4.27", features = ["serde"] }
 clap = { version = "4.4.1", features = ["derive"] }
 clickhouse = { version = "0.11.5", default-features = false, features = [
     "lz4",
+    "uuid",
 ] }
+uuid = { version = "1.8.0", features = ["v4", "serde"] }
 dashmap = { version = "5.5.3", features = ["serde"] }
 flate2 = "1.0.27"
 futures = "0.3.28"
@@ -52,10 +54,11 @@ twitch_api = { git = "https://github.com/twitch-rs/twitch_api", features = [
     "reqwest",
     "twitch_oauth2",
 ] }
-tmi = { version = "0.6.0", default-features = false, features = ["simd"] }
+tmi = { version = "0.7.0", default-features = false, features = ["simd"] }
 axum-prometheus = "0.6.1"
 metrics-prometheus = "0.6.0"
 axum-extra = { version = "0.9.3", features = ["typed-header"] }
+bitflags = { version = "2.5.0", features = ["serde"] }
 
 # https://github.com/twitch-rs/twitch_api/issues/256
 [patch.crates-io.twitch_types]

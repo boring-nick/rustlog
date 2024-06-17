@@ -1,4 +1,4 @@
-use crate::{error::Error, Result};
+use crate::{db::schema::StructuredMessage, error::Error, Result};
 use clickhouse::query::RowCursor;
 use futures::{
     stream::{self, Iter},
@@ -14,18 +14,18 @@ use tokio::pin;
 
 pub enum LogsStream {
     Cursor {
-        cursor: RowCursor<String>,
-        first_item: Option<String>,
+        cursor: RowCursor<StructuredMessage<'static>>,
+        first_item: Option<StructuredMessage<'static>>,
     },
     MultiQuery {
-        cursors: Vec<RowCursor<String>>,
+        cursors: Vec<RowCursor<StructuredMessage<'static>>>,
         current: usize,
     },
-    Provided(Iter<IntoIter<String>>),
+    Provided(Iter<IntoIter<StructuredMessage<'static>>>),
 }
 
 impl LogsStream {
-    pub async fn new_cursor(mut cursor: RowCursor<String>) -> Result<Self> {
+    pub async fn new_cursor(mut cursor: RowCursor<StructuredMessage<'static>>) -> Result<Self> {
         // Prefetch the first row to check that the response is not empty
         let first_item = cursor.next().await?.ok_or_else(|| Error::NotFound)?;
         Ok(Self::Cursor {
@@ -34,7 +34,7 @@ impl LogsStream {
         })
     }
 
-    pub fn new_provided(iter: Vec<String>) -> Result<Self> {
+    pub fn new_provided(iter: Vec<StructuredMessage<'static>>) -> Result<Self> {
         if iter.is_empty() {
             Err(Error::NotFound)
         } else {
@@ -42,7 +42,7 @@ impl LogsStream {
         }
     }
 
-    pub fn new_multi_query(cursors: Vec<RowCursor<String>>) -> Result<Self> {
+    pub fn new_multi_query(cursors: Vec<RowCursor<StructuredMessage<'static>>>) -> Result<Self> {
         // if streams.is_empty() {
         //     return Err(Error::NotFound);
         // }
@@ -55,7 +55,7 @@ impl LogsStream {
 }
 
 impl Stream for LogsStream {
-    type Item = Result<String>;
+    type Item = Result<StructuredMessage<'static>>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match self.deref_mut() {

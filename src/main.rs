@@ -61,7 +61,8 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::load()?;
     let mut db = clickhouse::Client::default()
         .with_url(&config.clickhouse_url)
-        .with_database(&config.clickhouse_db);
+        .with_database(&config.clickhouse_db)
+        .with_compression(clickhouse::Compression::None);
 
     if let Some(user) = &config.clickhouse_username {
         db = db.with_user(user);
@@ -73,7 +74,9 @@ async fn main() -> anyhow::Result<()> {
 
     let args = Args::parse();
 
-    setup_db(&db).await.context("Could not run DB migrations")?;
+    setup_db(&db, &config.clickhouse_db)
+        .await
+        .context("Could not run DB migrations")?;
 
     match args.subcommand {
         None => run(config, db).await,
