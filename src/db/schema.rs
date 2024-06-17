@@ -306,7 +306,7 @@ impl<'a> StructuredMessage<'a> {
         if !self.user_id.is_empty() {
             tags.push((Tag::UserId, Cow::Borrowed(self.user_id.as_ref())));
         }
-        if !self.user_login.is_empty() {
+        if !self.user_login.is_empty() && self.message_type == MessageType::UserNotice {
             tags.push((Tag::Login, Cow::Borrowed(self.user_login.as_ref())));
         }
         if !self.client_nonce.is_empty() {
