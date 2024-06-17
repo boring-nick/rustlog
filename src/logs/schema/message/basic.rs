@@ -23,7 +23,7 @@ impl<'a> ResponseMessage<'a> for BasicMessage<'a> {
     fn from_structured(msg: &'a StructuredMessage<'a>) -> anyhow::Result<Self> {
         Ok(Self {
             text: msg.user_friendly_text(),
-            display_name: &msg.display_name,
+            display_name: msg.display_name(),
             timestamp: chrono::DateTime::from_timestamp_millis(msg.timestamp.try_into()?)
                 .context("Invalid timestamp")?,
             id: Cow::Owned(msg.id().unwrap_or_default()),
