@@ -22,7 +22,7 @@ impl<'a> Migratable<'a> for StructuredMigration<'a> {
     async fn run(&self, db: &'a clickhouse::Client) -> anyhow::Result<()> {
         db.query(
             "
-CREATE TABLE IF NOT EXISTS message_structured
+CREATE TABLE message_structured
 (
     `channel_id` LowCardinality(String) CODEC(ZSTD(8)),
     `channel_login` LowCardinality(String) CODEC(ZSTD(8)),
