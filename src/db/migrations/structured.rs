@@ -114,7 +114,10 @@ ORDER BY (channel_id, user_id, timestamp)
         );
 
         info!("Dropping old table");
-        db.query("DROP TABLE message").execute().await?;
+        if let Err(err) = db.query("DROP TABLE message").execute().await {
+            error!("FAILED TO DROP OLD TABLE!!!! {err}");
+            error!("Drop it manually with `DROP TABLE message` to save on space")
+        }
 
         Ok(())
     }
