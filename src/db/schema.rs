@@ -287,7 +287,7 @@ impl<'a> StructuredMessage<'a> {
     }
 
     pub fn all_tags(&self) -> Vec<(Tag, Cow<'_, str>)> {
-        let mut tags = Vec::new();
+        let mut tags = Vec::with_capacity(16);
 
         tags.push((Tag::TmiSentTs, Cow::Owned(self.timestamp.to_string())));
 
@@ -310,10 +310,10 @@ impl<'a> StructuredMessage<'a> {
             tags.push((Tag::Login, Cow::Borrowed(self.user_login.as_ref())));
         }
         if !self.client_nonce.is_empty() {
-            tags.push((Tag::ClientNonce, Cow::Owned(escape_tag(&self.client_nonce))));
+            tags.push((Tag::ClientNonce, escape_tag(&self.client_nonce)));
         }
         if !self.display_name.is_empty() {
-            tags.push((Tag::DisplayName, Cow::Owned(escape_tag(&self.display_name))));
+            tags.push((Tag::DisplayName, escape_tag(&self.display_name)));
         }
 
         tags.push((
@@ -326,30 +326,31 @@ impl<'a> StructuredMessage<'a> {
                     .join(","),
             ),
         ));
-        tags.push((Tag::BadgeInfo, Cow::Owned(escape_tag(&self.badge_info))));
+        tags.push((Tag::BadgeInfo, escape_tag(&self.badge_info)));
 
         if let Some(color) = self.color {
             tags.push((Tag::Color, Cow::Owned(format!("#{color:04X}"))));
         }
 
         tags.extend([
-            (Tag::Flags, Cow::Owned(escape_tag(&self.automod_flags))),
+            (Tag::Flags, escape_tag(&self.automod_flags)),
             (Tag::UserType, Cow::Borrowed(self.user_type.as_ref())),
-            (Tag::Emotes, Cow::Owned(escape_tag(&self.emotes))),
+            (Tag::Emotes, escape_tag(&self.emotes)),
         ]);
 
         for (tag, value) in &self.extra_tags {
-            tags.push((Tag::parse(tag), Cow::Owned(escape_tag(value))));
+            tags.push((Tag::parse(tag), escape_tag(value)));
         }
 
         tags
     }
 
     pub fn to_raw_irc(&self) -> String {
-        let mut out = String::with_capacity(self.text.len() * 2);
+        let tags = self.all_tags();
+
+        let mut out = String::with_capacity(self.text.len() + tags.len() * 4);
         out.push('@');
 
-        let tags = self.all_tags();
         for (i, (tag, value)) in tags.iter().enumerate() {
             if i > 0 {
                 out.push(';');
@@ -423,19 +424,27 @@ impl<'a> StructuredMessage<'a> {
     }
 }
 
-fn escape_tag(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for char in value.chars() {
-        match char {
-            ';' => out.push_str("\\:"),
-            ' ' => out.push_str("\\s"),
-            '\\' => out.push_str("\\\\"),
-            '\r' => out.push_str("\\r"),
-            '\n' => out.push_str("\\n"),
-            _ => out.push(char),
+fn escape_tag(value: &str) -> Cow<'_, str> {
+    fn escape(value: &str) -> String {
+        let mut out = String::with_capacity(value.len());
+        for char in value.chars() {
+            match char {
+                ';' => out.push_str("\\:"),
+                ' ' => out.push_str("\\s"),
+                '\\' => out.push_str("\\\\"),
+                '\r' => out.push_str("\\r"),
+                '\n' => out.push_str("\\n"),
+                _ => out.push(char),
+            }
         }
+        out
     }
-    out
+
+    if value.contains(|c| c == ';' || c == ' ' || c == '\\' || c == '\r' || c == '\n') {
+        Cow::Owned(escape(value))
+    } else {
+        Cow::Borrowed(value)
+    }
 }
 
 #[derive(Serialize_repr, Deserialize_repr, EnumString, Debug, PartialEq, Display, Clone, Copy)]
