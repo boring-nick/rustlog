@@ -286,7 +286,7 @@ impl<'a> StructuredMessage<'a> {
         }
     }
 
-    pub fn all_tags(&self) -> Vec<(Tag, Cow<'_, str>)> {
+    pub fn all_tags(&self, escape: bool) -> Vec<(Tag, Cow<'_, str>)> {
         let mut tags = Vec::with_capacity(16);
 
         tags.push((Tag::TmiSentTs, Cow::Owned(self.timestamp.to_string())));
@@ -310,10 +310,20 @@ impl<'a> StructuredMessage<'a> {
             tags.push((Tag::Login, Cow::Borrowed(self.user_login.as_ref())));
         }
         if !self.client_nonce.is_empty() {
-            tags.push((Tag::ClientNonce, escape_tag(&self.client_nonce)));
+            let value = if escape {
+                escape_tag(&self.client_nonce)
+            } else {
+                Cow::Borrowed(self.client_nonce.as_ref())
+            };
+            tags.push((Tag::ClientNonce, value));
         }
         if !self.display_name.is_empty() {
-            tags.push((Tag::DisplayName, escape_tag(&self.display_name)));
+            let value = if escape {
+                escape_tag(&self.display_name)
+            } else {
+                Cow::Borrowed(self.display_name.as_ref())
+            };
+            tags.push((Tag::DisplayName, value));
         }
 
         tags.push((
@@ -321,32 +331,62 @@ impl<'a> StructuredMessage<'a> {
             Cow::Owned(
                 self.badges
                     .iter()
-                    .map(|value| escape_tag(value))
+                    .map(|value| {
+                        if escape {
+                            escape_tag(value)
+                        } else {
+                            Cow::Borrowed(value.as_ref())
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join(","),
             ),
         ));
-        tags.push((Tag::BadgeInfo, escape_tag(&self.badge_info)));
+        let badge_info = if escape {
+            escape_tag(&self.badge_info)
+        } else {
+            Cow::Borrowed(self.badge_info.as_ref())
+        };
+        tags.push((Tag::BadgeInfo, badge_info));
 
         if let Some(color) = self.color {
             tags.push((Tag::Color, Cow::Owned(format!("#{color:06X}"))));
         }
 
         tags.extend([
-            (Tag::Flags, escape_tag(&self.automod_flags)),
+            (
+                Tag::Flags,
+                if escape {
+                    escape_tag(&self.automod_flags)
+                } else {
+                    Cow::Borrowed(self.automod_flags.as_ref())
+                },
+            ),
             (Tag::UserType, Cow::Borrowed(self.user_type.as_ref())),
-            (Tag::Emotes, escape_tag(&self.emotes)),
+            (
+                Tag::Emotes,
+                if escape {
+                    escape_tag(&self.emotes)
+                } else {
+                    Cow::Borrowed(self.emotes.as_ref())
+                },
+            ),
         ]);
 
         for (tag, value) in &self.extra_tags {
-            tags.push((Tag::parse(tag), escape_tag(value)));
+            let value = if escape {
+                escape_tag(value)
+            } else {
+                Cow::Borrowed(value.as_ref())
+            };
+            tags.push((Tag::parse(tag), value));
         }
 
         tags
     }
 
     pub fn to_raw_irc(&self) -> String {
-        let tags = self.all_tags();
+        let tags = self.all_tags(true);
 
         let mut out = String::with_capacity(self.text.len() + tags.len() * 4);
         out.push('@');
@@ -558,7 +598,7 @@ mod tests {
         };
 
         let message = StructuredMessage::from_unstructured(&unstructured).unwrap();
-        let tags = message.all_tags();
+        let tags = message.all_tags(true);
 
         let irc_msg = IrcMessageRef::parse(raw).unwrap();
 

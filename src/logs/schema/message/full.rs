@@ -66,7 +66,6 @@ mod tests {
                     ("badge-info", ""),
                     ("emotes", ""),
                     ("flags", ""),
-                    ("login", "snusbot"),
                     ("user-id", "62541963"),
                     ("tmi-sent-ts", "1489263601000"),
                     ("room-id", "22484632"),
@@ -76,7 +75,7 @@ mod tests {
                 .map(|(k, v)| (k, Cow::Borrowed(v)))
                 .collect(),
             },
-            raw: "@tmi-sent-ts=1489263601000;room-id=22484632;user-id=62541963;login=snusbot;display-name=Snusbot;badges=;badge-info=;flags=;user-type=;emotes= :snusbot!snusbot@snusbot.tmi.twitch.tv PRIVMSG #forsen :prasoc won 10 points in roulette and now has 2838 points! forsenPls".to_owned(),
+            raw: "@tmi-sent-ts=1489263601000;room-id=22484632;user-id=62541963;display-name=Snusbot;badges=;badge-info=;flags=;user-type=;emotes= :snusbot!snusbot@snusbot.tmi.twitch.tv PRIVMSG #forsen :prasoc won 10 points in roulette and now has 2838 points! forsenPls".to_owned(),
             r#type: MessageType::PrivMsg,
             username: "snusbot",
             channel: "forsen",
