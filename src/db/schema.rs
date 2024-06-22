@@ -329,7 +329,7 @@ impl<'a> StructuredMessage<'a> {
         tags.push((Tag::BadgeInfo, escape_tag(&self.badge_info)));
 
         if let Some(color) = self.color {
-            tags.push((Tag::Color, Cow::Owned(format!("#{color:04X}"))));
+            tags.push((Tag::Color, Cow::Owned(format!("#{color:06X}"))));
         }
 
         tags.extend([
@@ -607,7 +607,7 @@ mod tests {
             channel_id: "22484632",
             user_id: "68136884",
             timestamp: 1709251274940,
-            raw: "@returning-chatter=0;user-id=68136884;user-type=;badges=vip/1,subscriber/60;mod=0;display-name=Supibot;room-id=22484632;flags=;emotes=;first-msg=0;vip=1;tmi-sent-ts=1709251274940;id=272e342c-5864-4c59-b730-25908cdb7f57;subscriber=1;turbo=0;color=#1E90FF;badge-info=subscriber/65 :supibot!supibot@supibot.tmi.twitch.tv PRIVMSG #forsen :+join 󠀀",
+            raw: "@returning-chatter=0;user-id=68136884;user-type=;badges=vip/1,subscriber/60;mod=0;display-name=Supibot;room-id=22484632;flags=;emotes=;first-msg=0;vip=1;tmi-sent-ts=1709251274940;id=272e342c-5864-4c59-b730-25908cdb7f57;subscriber=1;turbo=0;color=#0090FF;badge-info=subscriber/65 :supibot!supibot@supibot.tmi.twitch.tv PRIVMSG #forsen :+join 󠀀",
         };
         assert_roundtrip(unstructured);
     }
