@@ -41,6 +41,7 @@ impl Stream for NdJsonLogsStream {
                 Ok(chunk) => {
                     let messages: Vec<BasicMessage> = chunk
                         .iter()
+                        .flatten()
                         .filter_map(|msg| match BasicMessage::from_structured(msg) {
                             Ok(parsed) => Some(parsed),
                             Err(err) => {

@@ -102,11 +102,15 @@ impl Stream for JsonLogsStream {
 
         match fut.poll(cx) {
             Poll::Ready(Some(result)) => match result {
-                Ok(chunk) => {
-                    let buf = match self.response_type {
-                        JsonResponseType::Basic => self.serialize_chunk::<BasicMessage>(&chunk),
-                        JsonResponseType::Full => self.serialize_chunk::<FullMessage>(&chunk),
-                    };
+                Ok(chunks) => {
+                    let mut buf = Vec::new();
+                    for chunk in chunks {
+                        let chunk_buf = match self.response_type {
+                            JsonResponseType::Basic => self.serialize_chunk::<BasicMessage>(&chunk),
+                            JsonResponseType::Full => self.serialize_chunk::<FullMessage>(&chunk),
+                        };
+                        buf.extend_from_slice(&chunk_buf);
+                    }
 
                     Poll::Ready(Some(Ok(buf)))
                 }
