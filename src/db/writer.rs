@@ -4,16 +4,17 @@ use anyhow::{anyhow, Context};
 use clickhouse::Client;
 use lazy_static::lazy_static;
 use prometheus::{register_int_gauge, IntGauge};
-use std::time::{Duration, Instant};
+use std::{ops::Range, sync::Arc, time::Duration};
 use tokio::{
-    sync::mpsc::{channel, Sender},
+    sync::{
+        mpsc::{channel, Sender},
+        RwLock,
+    },
     task::JoinHandle,
-    time::sleep,
+    time::{sleep, Instant},
 };
-use tokio_stream::{wrappers::ReceiverStream, StreamExt};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, trace};
 
-const CHUNK_CAPACITY: usize = 750_000;
 const RETRY_COUNT: usize = 20;
 const RETRY_INTERVAL_SECONDS: u64 = 5;
 
@@ -25,32 +26,84 @@ lazy_static! {
     .unwrap();
 }
 
+#[derive(Default, Clone)]
+pub struct FlushBuffer {
+    messages: Arc<RwLock<Vec<StructuredMessage<'static>>>>,
+}
+
+impl FlushBuffer {
+    pub async fn messages_by_channel(
+        &self,
+        time_range: Range<u64>,
+        channel_id: &str,
+    ) -> Vec<StructuredMessage<'static>> {
+        let msgs = self
+            .messages
+            .read()
+            .await
+            .iter()
+            .filter(|msg| time_range.contains(&msg.timestamp))
+            .filter(|msg| msg.channel_id == channel_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        trace!("Read {} messages from flush buffer", msgs.len());
+        msgs
+    }
+
+    pub async fn messages_by_channel_and_user(
+        &self,
+        time_range: Range<u64>,
+        channel_id: &str,
+        user_id: &str,
+    ) -> Vec<StructuredMessage<'static>> {
+        let msgs = self
+            .messages
+            .read()
+            .await
+            .iter()
+            .filter(|msg| time_range.contains(&msg.timestamp))
+            .filter(|msg| msg.channel_id == channel_id && msg.user_id == user_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        trace!("Read {} messages from flush buffer", msgs.len());
+        msgs
+    }
+}
+
 pub async fn create_writer(
     db: Client,
     mut shutdown_rx: ShutdownRx,
     flush_interval: u64,
-) -> anyhow::Result<(Sender<StructuredMessage<'static>>, JoinHandle<()>)> {
-    let (tx, rx) = channel(CHUNK_CAPACITY);
+) -> anyhow::Result<(
+    Sender<StructuredMessage<'static>>,
+    FlushBuffer,
+    JoinHandle<()>,
+)> {
+    let (tx, mut rx) = channel(1000);
 
-    let chunks_stream =
-        ReceiverStream::new(rx).chunks_timeout(CHUNK_CAPACITY, Duration::from_secs(flush_interval));
-    let mut chunks_stream = Box::pin(chunks_stream);
+    let flush_buffer = FlushBuffer::default();
+    let flush_buffer_clone = flush_buffer.clone();
 
     let handle = tokio::spawn(async move {
+        let timeout = tokio::time::sleep(Duration::from_secs(flush_interval));
+        tokio::pin!(timeout);
+
         loop {
             tokio::select! {
-                Some(chunk) = chunks_stream.next() => {
-                    if let Err(err) = write_chunk_with_retry(&db, chunk).await {
+                _ = &mut timeout => {
+                    timeout.as_mut().reset(Instant::now() + Duration::from_secs(flush_interval));
+                    if let Err(err) = write_chunk_with_retry(&db, &flush_buffer).await {
                         error!("Could not write messages: {err}");
                     }
+                }
+                Some(msg) = rx.recv() => {
+                    flush_buffer.messages.write().await.push(msg);
                 }
                 Ok(()) = shutdown_rx.changed() => {
                     info!("Flushing database write buffer");
 
-                    while let Some(chunk) = chunks_stream.next().await {
-                        if let Err(err) = write_chunk_with_retry(&db, chunk).await {
-                            error!("Could not flush messages: {err}");
-                        }
+                    if let Err(err) = write_chunk_with_retry(&db, &flush_buffer).await {
+                        error!("Could not flush messages: {err}");
                     }
 
                     break;
@@ -59,15 +112,12 @@ pub async fn create_writer(
         }
     });
 
-    Ok((tx, handle))
+    Ok((tx, flush_buffer_clone, handle))
 }
 
-async fn write_chunk_with_retry(
-    db: &Client,
-    messages: Vec<StructuredMessage<'_>>,
-) -> anyhow::Result<()> {
+async fn write_chunk_with_retry(db: &Client, buffer: &FlushBuffer) -> anyhow::Result<()> {
     for attempt in 1..=RETRY_COUNT {
-        match write_chunk(db, &messages).await {
+        match write_chunk(db, buffer).await {
             Ok(()) => {
                 if attempt > 1 {
                     debug!("Insert succeeded on attempt {attempt}");
@@ -85,21 +135,27 @@ async fn write_chunk_with_retry(
     ))
 }
 
-async fn write_chunk(db: &Client, messages: &[StructuredMessage<'_>]) -> anyhow::Result<()> {
+async fn write_chunk(db: &Client, buffer: &FlushBuffer) -> anyhow::Result<()> {
+    let messages_read_guard = buffer.messages.read().await;
+
     let started_at = Instant::now();
 
     let mut insert = db.insert(MESSAGES_STRUCTURED_TABLE)?;
-    for message in messages {
+    for message in messages_read_guard.iter() {
         insert.write(message).await.context("Could not write row")?;
     }
+    drop(messages_read_guard);
+
+    let mut messages_write_guard = buffer.messages.write().await;
     insert.end().await.context("Could not end insert")?;
 
     debug!(
         "{} messages have been inserted (took {}ms)",
-        messages.len(),
+        messages_write_guard.len(),
         started_at.elapsed().as_millis()
     );
-    BATCH_MSG_COUNT_GAGUE.set(messages.len().try_into().unwrap());
+    BATCH_MSG_COUNT_GAGUE.set(messages_write_guard.len().try_into().unwrap());
+    messages_write_guard.clear();
 
     Ok(())
 }

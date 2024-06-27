@@ -12,7 +12,7 @@ use uuid::Uuid;
 pub const MESSAGES_STRUCTURED_TABLE: &str = "message_structured";
 
 bitflags! {
-    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Default)]
+    #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Default, Clone, Copy)]
     #[serde(transparent)]
     pub struct MessageFlags: u16 {
         const SUBSCRIBER        = 1;
@@ -71,7 +71,7 @@ impl MessageFlags {
     }
 }
 
-#[derive(Row, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Row, Serialize, Deserialize, Debug, PartialEq, Clone)]
 pub struct StructuredMessage<'a> {
     pub channel_id: Cow<'a, str>,
     pub channel_login: Cow<'a, str>,

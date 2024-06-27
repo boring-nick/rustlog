@@ -33,7 +33,7 @@ impl Stream for TextLogsStream {
                 Ok(chunk) => {
                     let mut output = String::with_capacity(chunk.len() * 16);
 
-                    for msg in chunk {
+                    for msg in chunk.into_iter().flatten() {
                         let timestamp =
                             chrono::DateTime::from_timestamp_millis(msg.timestamp as i64)
                                 .unwrap_or_default()

@@ -1737,7 +1737,6 @@ dependencies = [
  "thiserror",
  "tmi",
  "tokio",
- "tokio-stream",
  "tower-http",
  "tracing",
  "tracing-subscriber",

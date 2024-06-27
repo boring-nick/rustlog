@@ -3,10 +3,14 @@ pub mod schema;
 pub mod writer;
 
 pub use migrations::run as setup_db;
+use writer::FlushBuffer;
 
 use crate::{
     error::Error,
-    logs::{schema::LogRangeParams, stream::LogsStream},
+    logs::{
+        schema::LogRangeParams,
+        stream::{FlushBufferResponse, LogsStream},
+    },
     web::schema::{AvailableLogDate, LogsParams},
     Result,
 };
@@ -22,6 +26,7 @@ pub async fn read_channel(
     db: &Client,
     channel_id: &str,
     params: &LogRangeParams,
+    flush_buffer: &FlushBuffer,
 ) -> Result<LogsStream> {
     let suffix = if params.logs_params.reverse {
         "DESC"
@@ -30,6 +35,15 @@ pub async fn read_channel(
     };
 
     let mut query = format!("SELECT ?fields FROM message_structured WHERE channel_id = ? AND timestamp >= ? AND timestamp < ? ORDER BY timestamp {suffix}");
+
+    let flush_params = FlushBufferResponse {
+        buffer: Some(flush_buffer.clone()),
+        channel_id: channel_id.to_owned(),
+        user_id: None,
+        reverse: params.logs_params.reverse,
+        from: params.from,
+        to: params.to,
+    };
 
     let interval = Duration::days(CHANNEL_MULTI_QUERY_SIZE_DAYS);
     if params.to - params.from > interval {
@@ -68,7 +82,7 @@ pub async fn read_channel(
 
         debug!("Using {} queries for multi-query stream", streams.len());
 
-        LogsStream::new_multi_query(streams)
+        LogsStream::new_multi_query(streams, flush_params)
     } else {
         apply_limit_offset(
             &mut query,
@@ -82,7 +96,7 @@ pub async fn read_channel(
             .bind(params.from.timestamp_millis() as f64 / 1000.0)
             .bind(params.to.timestamp_millis() as f64 / 1000.0)
             .fetch()?;
-        LogsStream::new_cursor(cursor).await
+        LogsStream::new_cursor(cursor, flush_params).await
     }
 }
 
@@ -107,6 +121,7 @@ pub async fn read_user(
     channel_id: &str,
     user_id: &str,
     params: &LogRangeParams,
+    flush_buffer: &FlushBuffer,
 ) -> Result<LogsStream> {
     let suffix = if params.logs_params.reverse {
         "DESC"
@@ -120,6 +135,15 @@ pub async fn read_user(
         params.logs_params.offset,
     );
 
+    let flush_params = FlushBufferResponse {
+        buffer: Some(flush_buffer.clone()),
+        channel_id: channel_id.to_owned(),
+        user_id: Some(user_id.to_owned()),
+        reverse: params.logs_params.reverse,
+        from: params.from,
+        to: params.to,
+    };
+
     let cursor = db
         .query(&query)
         .bind(channel_id)
@@ -127,7 +151,7 @@ pub async fn read_user(
         .bind(params.from.timestamp_millis() as f64 / 1000.0)
         .bind(params.to.timestamp_millis() as f64 / 1000.0)
         .fetch()?;
-    LogsStream::new_cursor(cursor).await
+    LogsStream::new_cursor(cursor, flush_params).await
 }
 
 pub async fn read_available_channel_logs(
@@ -287,7 +311,7 @@ pub async fn search_user_logs(
         .bind(user_id)
         .bind(search)
         .fetch()?;
-    LogsStream::new_cursor(cursor).await
+    LogsStream::new_cursor(cursor, FlushBufferResponse::default()).await
 }
 
 fn apply_limit_offset(query: &mut String, limit: Option<u64>, offset: Option<u64>) {
