@@ -9,7 +9,7 @@ use crate::{
     error::Error,
     logs::{
         schema::LogRangeParams,
-        stream::{FlushBufferParams, LogsStream},
+        stream::{FlushBufferResponse, LogsStream},
     },
     web::schema::{AvailableLogDate, LogsParams},
     Result,
@@ -36,7 +36,7 @@ pub async fn read_channel(
 
     let mut query = format!("SELECT ?fields FROM message_structured WHERE channel_id = ? AND timestamp >= ? AND timestamp < ? ORDER BY timestamp {suffix}");
 
-    let flush_params = FlushBufferParams {
+    let flush_params = FlushBufferResponse {
         buffer: Some(flush_buffer.clone()),
         channel_id: channel_id.to_owned(),
         user_id: None,
@@ -135,7 +135,7 @@ pub async fn read_user(
         params.logs_params.offset,
     );
 
-    let flush_params = FlushBufferParams {
+    let flush_params = FlushBufferResponse {
         buffer: Some(flush_buffer.clone()),
         channel_id: channel_id.to_owned(),
         user_id: Some(user_id.to_owned()),
@@ -311,7 +311,7 @@ pub async fn search_user_logs(
         .bind(user_id)
         .bind(search)
         .fetch()?;
-    LogsStream::new_cursor(cursor, FlushBufferParams::default()).await
+    LogsStream::new_cursor(cursor, FlushBufferResponse::default()).await
 }
 
 fn apply_limit_offset(query: &mut String, limit: Option<u64>, offset: Option<u64>) {

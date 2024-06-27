@@ -14,7 +14,7 @@ use std::{
 use tokio::pin;
 
 #[derive(Default)]
-pub struct FlushBufferParams {
+pub struct FlushBufferResponse {
     pub buffer: Option<FlushBuffer>,
     pub channel_id: String,
     pub user_id: Option<String>,
@@ -23,7 +23,7 @@ pub struct FlushBufferParams {
     pub to: DateTime<Utc>,
 }
 
-impl FlushBufferParams {
+impl FlushBufferResponse {
     fn timestamp_range(&self) -> Range<u64> {
         (self.from.timestamp_millis() as u64)..(self.to.timestamp_millis() as u64)
     }
@@ -31,7 +31,7 @@ impl FlushBufferParams {
     async fn take_messages(&mut self) -> Option<Vec<StructuredMessage<'static>>> {
         match &self.buffer {
             Some(buffer) => {
-                let messages = if let Some(user_id) = &self.user_id {
+                let mut messages = if let Some(user_id) = &self.user_id {
                     buffer
                         .messages_by_channel_and_user(
                             self.timestamp_range(),
@@ -44,6 +44,11 @@ impl FlushBufferParams {
                         .messages_by_channel(self.timestamp_range(), &self.channel_id)
                         .await
                 };
+
+                if self.reverse {
+                    messages.reverse();
+                }
+
                 self.buffer = None;
                 Some(messages)
             }
@@ -56,12 +61,12 @@ pub enum LogsStream {
     Cursor {
         cursor: RowCursor<StructuredMessage<'static>>,
         first_item: Option<StructuredMessage<'static>>,
-        flush_params: FlushBufferParams,
+        flush_params: FlushBufferResponse,
     },
     MultiQuery {
         cursors: Vec<RowCursor<StructuredMessage<'static>>>,
         current: usize,
-        flush_params: FlushBufferParams,
+        flush_params: FlushBufferResponse,
     },
     Provided(Option<Vec<StructuredMessage<'static>>>),
 }
@@ -69,7 +74,7 @@ pub enum LogsStream {
 impl LogsStream {
     pub async fn new_cursor(
         mut cursor: RowCursor<StructuredMessage<'static>>,
-        flush_params: FlushBufferParams,
+        flush_params: FlushBufferResponse,
     ) -> Result<Self> {
         // Prefetch the first row to check that the response is not empty
         let first_item = cursor.next().await?.ok_or_else(|| Error::NotFound)?;
@@ -90,7 +95,7 @@ impl LogsStream {
 
     pub fn new_multi_query(
         cursors: Vec<RowCursor<StructuredMessage<'static>>>,
-        flush_params: FlushBufferParams,
+        flush_params: FlushBufferResponse,
     ) -> Result<Self> {
         // if streams.is_empty() {
         //     return Err(Error::NotFound);
