@@ -3,7 +3,6 @@ use crate::{
     error::Error,
     Result,
 };
-use chrono::{DateTime, Utc};
 use clickhouse::query::RowCursor;
 use futures::{Future, Stream};
 use std::{
@@ -13,22 +12,25 @@ use std::{
 };
 use tokio::pin;
 
-#[derive(Default)]
+use super::schema::LogRangeParams;
+
 pub struct FlushBufferResponse {
     pub buffer: Option<FlushBuffer>,
     pub channel_id: String,
     pub user_id: Option<String>,
-    pub reverse: bool,
-    pub from: DateTime<Utc>,
-    pub to: DateTime<Utc>,
+    pub params: LogRangeParams,
 }
 
 impl FlushBufferResponse {
     fn timestamp_range(&self) -> Range<u64> {
-        (self.from.timestamp_millis() as u64)..(self.to.timestamp_millis() as u64)
+        (self.params.from.timestamp_millis() as u64)..(self.params.to.timestamp_millis() as u64)
     }
 
     async fn take_messages(&mut self) -> Option<Vec<StructuredMessage<'static>>> {
+        if self.params.logs_params.limit.is_some() || self.params.logs_params.offset.is_some() {
+            return None;
+        }
+
         match &self.buffer {
             Some(buffer) => {
                 let mut messages = if let Some(user_id) = &self.user_id {
@@ -45,7 +47,7 @@ impl FlushBufferResponse {
                         .await
                 };
 
-                if self.reverse {
+                if self.params.logs_params.reverse {
                     messages.reverse();
                 }
 
@@ -119,7 +121,7 @@ impl Stream for LogsStream {
                 first_item,
                 flush_params,
             } => {
-                if flush_params.reverse {
+                if flush_params.params.logs_params.reverse {
                     let fut = flush_params.take_messages();
                     pin!(fut);
                     match fut.poll(cx) {
@@ -159,7 +161,7 @@ impl Stream for LogsStream {
                 current,
                 flush_params,
             } => {
-                if flush_params.reverse {
+                if flush_params.params.logs_params.reverse {
                     let fut = flush_params.take_messages();
                     pin!(fut);
                     match fut.poll(cx) {

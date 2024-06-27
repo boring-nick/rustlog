@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::web::schema::LogsParams;
 
-#[derive(Deserialize, JsonSchema)]
+#[derive(Deserialize, JsonSchema, Clone, Copy)]
 pub struct LogRangeParams {
     #[schemars(with = "String")]
     /// RFC 3339 start date

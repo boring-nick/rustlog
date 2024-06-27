@@ -25,7 +25,7 @@ const CHANNEL_MULTI_QUERY_SIZE_DAYS: i64 = 14;
 pub async fn read_channel(
     db: &Client,
     channel_id: &str,
-    params: &LogRangeParams,
+    params: LogRangeParams,
     flush_buffer: &FlushBuffer,
 ) -> Result<LogsStream> {
     let suffix = if params.logs_params.reverse {
@@ -40,9 +40,7 @@ pub async fn read_channel(
         buffer: Some(flush_buffer.clone()),
         channel_id: channel_id.to_owned(),
         user_id: None,
-        reverse: params.logs_params.reverse,
-        from: params.from,
-        to: params.to,
+        params,
     };
 
     let interval = Duration::days(CHANNEL_MULTI_QUERY_SIZE_DAYS);
@@ -120,7 +118,7 @@ pub async fn read_user(
     db: &Client,
     channel_id: &str,
     user_id: &str,
-    params: &LogRangeParams,
+    params: LogRangeParams,
     flush_buffer: &FlushBuffer,
 ) -> Result<LogsStream> {
     let suffix = if params.logs_params.reverse {
@@ -139,9 +137,7 @@ pub async fn read_user(
         buffer: Some(flush_buffer.clone()),
         channel_id: channel_id.to_owned(),
         user_id: Some(user_id.to_owned()),
-        reverse: params.logs_params.reverse,
-        from: params.from,
-        to: params.to,
+        params,
     };
 
     let cursor = db
@@ -298,7 +294,7 @@ pub async fn search_user_logs(
     channel_id: &str,
     user_id: &str,
     search: &str,
-    params: &LogsParams,
+    params: LogsParams,
 ) -> Result<LogsStream> {
     let suffix = if params.reverse { "DESC" } else { "ASC" };
 
@@ -311,7 +307,18 @@ pub async fn search_user_logs(
         .bind(user_id)
         .bind(search)
         .fetch()?;
-    LogsStream::new_cursor(cursor, FlushBufferResponse::default()).await
+
+    let flush_params = FlushBufferResponse {
+        buffer: None,
+        channel_id: String::new(),
+        user_id: None,
+        params: LogRangeParams {
+            from: DateTime::UNIX_EPOCH,
+            to: DateTime::UNIX_EPOCH,
+            logs_params: params,
+        },
+    };
+    LogsStream::new_cursor(cursor, flush_params).await
 }
 
 fn apply_limit_offset(query: &mut String, limit: Option<u64>, offset: Option<u64>) {
