@@ -136,23 +136,26 @@ async fn write_chunk_with_retry(db: &Client, buffer: &FlushBuffer) -> anyhow::Re
 }
 
 async fn write_chunk(db: &Client, buffer: &FlushBuffer) -> anyhow::Result<()> {
-    let mut messages_guard = buffer.messages.write().await;
+    let messages_read_guard = buffer.messages.read().await;
 
     let started_at = Instant::now();
 
     let mut insert = db.insert(MESSAGES_STRUCTURED_TABLE)?;
-    for message in messages_guard.iter() {
+    for message in messages_read_guard.iter() {
         insert.write(message).await.context("Could not write row")?;
     }
+    drop(messages_read_guard);
+
+    let mut messages_write_guard = buffer.messages.write().await;
     insert.end().await.context("Could not end insert")?;
 
     debug!(
         "{} messages have been inserted (took {}ms)",
-        messages_guard.len(),
+        messages_write_guard.len(),
         started_at.elapsed().as_millis()
     );
-    BATCH_MSG_COUNT_GAGUE.set(messages_guard.len().try_into().unwrap());
-    messages_guard.clear();
+    BATCH_MSG_COUNT_GAGUE.set(messages_write_guard.len().try_into().unwrap());
+    messages_write_guard.clear();
 
     Ok(())
 }

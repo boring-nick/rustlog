@@ -118,7 +118,11 @@ impl Stream for LogsStream {
                     let fut = flush_params.take_messages();
                     pin!(fut);
                     match fut.poll(cx) {
-                        Poll::Ready(Some(messages)) => return Poll::Ready(Some(Ok(messages))),
+                        Poll::Ready(Some(messages)) => {
+                            if !messages.is_empty() {
+                                return Poll::Ready(Some(Ok(messages)));
+                            }
+                        }
                         Poll::Ready(None) => (),
                         Poll::Pending => return Poll::Pending,
                     }
@@ -137,7 +141,9 @@ impl Stream for LogsStream {
                         Poll::Ready(Ok(None)) => {
                             let fut = flush_params.take_messages();
                             pin!(fut);
-                            fut.poll(cx).map(|option| Ok(option).transpose())
+                            fut.poll(cx).map(|option| {
+                                Ok(option.filter(|messages| !messages.is_empty())).transpose()
+                            })
                         }
                     }
                 }
@@ -152,7 +158,11 @@ impl Stream for LogsStream {
                     let fut = flush_params.take_messages();
                     pin!(fut);
                     match fut.poll(cx) {
-                        Poll::Ready(Some(messages)) => return Poll::Ready(Some(Ok(messages))),
+                        Poll::Ready(Some(messages)) => {
+                            if !messages.is_empty() {
+                                return Poll::Ready(Some(Ok(messages)));
+                            }
+                        }
                         Poll::Ready(None) => (),
                         Poll::Pending => return Poll::Pending,
                     }
@@ -181,7 +191,9 @@ impl Stream for LogsStream {
                     None => {
                         let fut = flush_params.take_messages();
                         pin!(fut);
-                        fut.poll(cx).map(|option| Ok(option).transpose())
+                        fut.poll(cx).map(|option| {
+                            Ok(option.filter(|messages| !messages.is_empty())).transpose()
+                        })
                     }
                 }
             }
