@@ -63,7 +63,7 @@ pub struct LogsPathChannel {
     pub channel: String,
 }
 
-#[derive(Deserialize, Debug, JsonSchema)]
+#[derive(Deserialize, Debug, JsonSchema, Clone, Copy)]
 #[serde(rename_all = "camelCase")]
 pub struct LogsParams {
     #[serde(default, deserialize_with = "deserialize_bool_param")]
@@ -101,6 +101,13 @@ where
     D: Deserializer<'de>,
 {
     Ok(Option::<&str>::deserialize(deserializer)?.is_some())
+}
+
+#[derive(Deserialize, Debug, JsonSchema)]
+pub struct SearchParams {
+    pub q: String,
+    #[serde(flatten)]
+    pub logs_params: LogsParams,
 }
 
 #[derive(Serialize, JsonSchema)]

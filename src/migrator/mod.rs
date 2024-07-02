@@ -3,7 +3,7 @@ pub mod supibot;
 
 use self::reader::{LogsReader, COMPRESSED_CHANNEL_FILE, UNCOMPRESSED_CHANNEL_FILE};
 use crate::{
-    db::schema::{Message, MESSAGES_TABLE},
+    db::schema::{StructuredMessage, UnstructuredMessage, MESSAGES_STRUCTURED_TABLE},
     logs::extract::{extract_raw_timestamp, extract_user_id},
     migrator::reader::ChannelLogDateMap,
 };
@@ -13,7 +13,6 @@ use clickhouse::inserter::Inserter;
 use flate2::bufread::GzDecoder;
 use indexmap::IndexMap;
 use std::{
-    borrow::Cow,
     convert::TryInto,
     fs::File,
     io::{BufRead, BufReader},
@@ -26,7 +25,7 @@ use std::{
 };
 use tmi::Command;
 use tokio::sync::Semaphore;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 const INSERT_BATCH_SIZE: u64 = 10_000_000;
 
@@ -106,7 +105,7 @@ impl Migrator {
                     let handle = tokio::spawn(async move {
                         let mut inserter = migrator
                             .db
-                            .inserter(MESSAGES_TABLE)?
+                            .inserter(MESSAGES_STRUCTURED_TABLE)?
                             .with_timeouts(
                                 Some(Duration::from_secs(30)),
                                 Some(Duration::from_secs(180)),
@@ -183,7 +182,7 @@ impl Migrator {
         root_path: &Path,
         channel_id: &'a str,
         date: DateTime<Utc>,
-        inserter: &mut Inserter<Message<'a>>,
+        inserter: &mut Inserter<StructuredMessage<'a>>,
     ) -> anyhow::Result<usize> {
         let day_path = get_day_path(root_path, channel_id, date);
 
@@ -212,7 +211,7 @@ impl Migrator {
         reader: R,
         datetime: DateTime<Utc>,
         channel_id: &'a str,
-        inserter: &mut Inserter<Message<'a>>,
+        inserter: &mut Inserter<StructuredMessage<'a>>,
     ) -> anyhow::Result<usize> {
         let mut read_bytes = 0;
 
@@ -239,13 +238,10 @@ impl Migrator {
 async fn write_line<'a>(
     channel_id: &'a str,
     raw: String,
-    inserter: &mut Inserter<Message<'_>>,
+    inserter: &mut Inserter<StructuredMessage<'_>>,
     datetime: DateTime<Utc>,
 ) -> anyhow::Result<()> {
-    match tmi::IrcMessageRef::parse_with_whitelist(
-        &raw,
-        tmi::whitelist!(TmiSentTs, UserId, TargetUserId),
-    ) {
+    match tmi::IrcMessageRef::parse(&raw) {
         Some(irc_message) => {
             let timestamp = extract_raw_timestamp(&irc_message)
                 .unwrap_or_else(|| datetime.timestamp_millis() as u64);
@@ -259,16 +255,23 @@ async fn write_line<'a>(
                 ""
             });
 
-            let message = Message {
-                channel_id: Cow::Borrowed(channel_id),
-                user_id: Cow::Borrowed(user_id),
+            let unstructured = UnstructuredMessage {
+                channel_id,
+                user_id,
                 timestamp,
-                raw: Cow::Borrowed(irc_message.raw()),
+                raw: irc_message.raw(),
             };
-            // This is safe because despite the function signature,
-            // `inserter.write` only uses the value for serialization at the time of the method call, and not later
-            let message: Message<'static> = unsafe { std::mem::transmute(message) };
-            inserter.write(&message).await?;
+            match StructuredMessage::from_unstructured(&unstructured) {
+                Ok(msg) => {
+                    // This is safe because despite the function signature,
+                    // `inserter.write` only uses the value for serialization at the time of the method call, and not later
+                    let msg: StructuredMessage<'static> = unsafe { std::mem::transmute(msg) };
+                    inserter.write(&msg).await?;
+                }
+                Err(err) => {
+                    error!("Could not convert message {unstructured:?}: {err}");
+                }
+            }
         }
         None => {
             warn!("Could not parse message `{raw}`");

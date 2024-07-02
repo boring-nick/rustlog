@@ -61,7 +61,8 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::load()?;
     let mut db = clickhouse::Client::default()
         .with_url(&config.clickhouse_url)
-        .with_database(&config.clickhouse_db);
+        .with_database(&config.clickhouse_db)
+        .with_compression(clickhouse::Compression::None);
 
     if let Some(user) = &config.clickhouse_username {
         db = db.with_user(user);
@@ -73,7 +74,9 @@ async fn main() -> anyhow::Result<()> {
 
     let args = Args::parse();
 
-    setup_db(&db).await.context("Could not run DB migrations")?;
+    setup_db(&db, &config.clickhouse_db)
+        .await
+        .context("Could not run DB migrations")?;
 
     match args.subcommand {
         None => run(config, db).await,
@@ -95,7 +98,7 @@ async fn run(config: Config, db: clickhouse::Client) -> anyhow::Result<()> {
     let helix_client: HelixClient<reqwest::Client> = HelixClient::default();
     let token = generate_token(&config).await?;
 
-    let (writer_tx, mut writer_handle) = create_writer(
+    let (writer_tx, flush_buffer, mut writer_handle) = create_writer(
         db.clone(),
         shutdown_rx.clone(),
         config.clickhouse_flush_interval,
@@ -109,6 +112,7 @@ async fn run(config: Config, db: clickhouse::Client) -> anyhow::Result<()> {
         config: Arc::new(config),
         db: Arc::new(db),
         optout_codes: Arc::default(),
+        flush_buffer,
     };
 
     let (bot_tx, bot_rx) = mpsc::channel(1);

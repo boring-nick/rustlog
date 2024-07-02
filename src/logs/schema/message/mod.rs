@@ -6,8 +6,8 @@ pub use full::FullMessage;
 
 use serde::Serialize;
 
-pub trait ResponseMessage<'a>: Sized + Send + Serialize + Unpin {
-    fn from_irc_message(msg: &'a tmi::IrcMessageRef<'_>) -> anyhow::Result<Self>;
+use crate::db::schema::StructuredMessage;
 
-    fn unescape_tags(&mut self);
+pub trait ResponseMessage<'a>: Sized + Send + Serialize + Unpin {
+    fn from_structured(msg: &'a StructuredMessage<'a>) -> anyhow::Result<Self>;
 }
