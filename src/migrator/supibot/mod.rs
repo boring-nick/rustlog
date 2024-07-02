@@ -3,7 +3,7 @@ mod users;
 use super::INSERT_BATCH_SIZE;
 use crate::{
     config::Config,
-    db::schema::{Message, MESSAGES_TABLE},
+    db::schema::{MessageFlags, MessageType, StructuredMessage, MESSAGES_STRUCTURED_TABLE},
     error::Error,
     migrator::supibot::users::UsersClient,
 };
@@ -20,6 +20,7 @@ use std::{
     time::Duration,
 };
 use tracing::{error, info};
+use uuid::Uuid;
 
 // Exmaple: 2023-06-23 14:46:26.588
 const DATE_FMT: &str = "%F %X%.3f";
@@ -53,7 +54,7 @@ pub async fn run(
             info!("Migrating file {file_name}, channel id {channel_id}");
 
             let inserter = db
-                .inserter(MESSAGES_TABLE)?
+                .inserter(MESSAGES_STRUCTURED_TABLE)?
                 .with_timeouts(
                     Some(Duration::from_secs(30)),
                     Some(Duration::from_secs(180)),
@@ -139,7 +140,7 @@ struct SupibotMigrator {
     /// Messages whose users are not cached
     /// Indexed by user id
     non_cached_messages: HashMap<String, Vec<SupibotMessage>>,
-    inserter: Inserter<Message<'static>>,
+    inserter: Inserter<StructuredMessage<'static>>,
     channel_id: String,
     channel_login: String,
     invalid_user_ids: HashSet<String>,
@@ -261,21 +262,25 @@ impl SupibotMigrator {
         }
 
         let timestamp = datetime.timestamp_millis() as u64;
-        let raw = format!(
-            "@id=;returning-chatter=0;turbo=0;mod=0;room-id={channel_id};subscriber=;tmi-sent-ts={timestamp};badge-info=;user-id={user_id};badges=;user-type=;display-name={display_name};flags=;emotes=;first-msg=0;color={color} :{login}!{login}@{login}.tmi.twitch.tv PRIVMSG #{channel_login} :{text}",
-            channel_id = self.channel_id,
-            channel_login = self.channel_login,
-            display_name = user_login,
-            user_id = user_id,
-            login = user_login,
-            color = "",
-        );
-
-        let message = Message {
-            channel_id: Cow::Owned(self.channel_id.to_owned()),
-            user_id: Cow::Owned(user_id.to_owned()),
+        let message = StructuredMessage {
+            channel_id: Cow::Owned(self.channel_id.clone()),
+            channel_login: Cow::Owned(self.channel_login.clone()),
             timestamp,
-            raw: Cow::Owned(raw),
+            id: Uuid::nil(),
+            message_type: MessageType::PrivMsg,
+            user_id: Cow::Owned(user_id.to_owned()),
+            user_login: Cow::Owned(user_login.to_owned()),
+            display_name: Cow::Owned(user_login.to_owned()),
+            color: None,
+            user_type: Cow::default(),
+            badges: vec![],
+            badge_info: Cow::default(),
+            client_nonce: Cow::default(),
+            emotes: Cow::default(),
+            automod_flags: Cow::default(),
+            text: Cow::Owned(text.clone()),
+            message_flags: MessageFlags::default(),
+            extra_tags: vec![],
         };
 
         self.inserter.write(&message).await?;

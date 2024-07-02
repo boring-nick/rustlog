@@ -77,11 +77,11 @@ pub struct StructuredMessage<'a> {
     pub channel_login: Cow<'a, str>,
     pub timestamp: u64,
     #[serde(with = "clickhouse::serde::uuid")]
-    id: Uuid,
+    pub id: Uuid,
     pub message_type: MessageType,
     pub user_id: Cow<'a, str>,
     pub user_login: Cow<'a, str>,
-    display_name: Cow<'a, str>,
+    pub display_name: Cow<'a, str>,
     pub color: Option<u32>,
     pub user_type: Cow<'a, str>,
     pub badges: Vec<Cow<'a, str>>,
@@ -89,7 +89,7 @@ pub struct StructuredMessage<'a> {
     pub client_nonce: Cow<'a, str>,
     pub emotes: Cow<'a, str>,
     pub automod_flags: Cow<'a, str>,
-    text: Cow<'a, str>,
+    pub text: Cow<'a, str>,
     pub message_flags: MessageFlags,
     pub extra_tags: Vec<(Cow<'a, str>, Cow<'a, str>)>,
 }
