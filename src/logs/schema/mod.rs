@@ -17,17 +17,3 @@ pub struct LogRangeParams {
     #[serde(flatten)]
     pub logs_params: LogsParams,
 }
-
-#[derive(Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum UserIdentifier<'a> {
-    User(&'a str),
-    UserId(&'a str),
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ChannelIdentifier<'a> {
-    Channel(&'a str),
-    ChannelId(&'a str),
-}
