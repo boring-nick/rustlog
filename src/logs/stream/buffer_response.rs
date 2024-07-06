@@ -3,6 +3,7 @@ use crate::{
     logs::schema::LogRangeParams,
 };
 
+#[derive(Debug)]
 pub struct FlushBufferResponse {
     pub messages: Vec<StructuredMessage<'static>>,
     pub params: LogRangeParams,

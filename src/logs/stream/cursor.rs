@@ -85,7 +85,11 @@ impl Stream for CursorStream {
                     .take()
                     .filter(|buffer| !buffer.is_at_start() && !buffer.is_empty())
                     .map(|buffer| match self.limit {
-                        Some(limit) => buffer.messages.into_iter().take(limit).collect(),
+                        Some(limit) => buffer
+                            .messages
+                            .into_iter()
+                            .take(limit.saturating_sub(self.count))
+                            .collect(),
                         None => buffer.messages,
                     })
                     .map(Ok);
