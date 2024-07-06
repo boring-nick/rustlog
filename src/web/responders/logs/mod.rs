@@ -36,6 +36,7 @@ pub enum LogsResponseType {
 /// Used for schema only, actual serialization is manual
 #[derive(JsonSchema)]
 pub struct JsonLogsResponse<'a> {
+    #[allow(dead_code)]
     pub messages: Vec<FullMessage<'a>>,
 }
 
