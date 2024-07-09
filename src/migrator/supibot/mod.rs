@@ -114,7 +114,7 @@ async fn get_existing_dates(
 
     let raw_dates = db
         .query(
-            "SELECT DISTINCT toStartOfDay(timestamp) as datetime FROM message WHERE channel_id = ?",
+            "SELECT DISTINCT toStartOfDay(timestamp) as datetime FROM message_structured WHERE channel_id = ?",
         )
         .bind(channel_id)
         .fetch_all::<DateRow>()
