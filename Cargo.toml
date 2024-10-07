@@ -9,12 +9,13 @@ anyhow = "1.0.75"
 axum = { version = "0.7.5", features = ["tokio"] }
 chrono = { version = "0.4.27", features = ["serde"] }
 clap = { version = "4.4.1", features = ["derive"] }
-clickhouse = { version = "0.11.5", default-features = false, features = [
+clickhouse = { version = "0.13.0", default-features = false, features = [
     "lz4",
     "uuid",
+    "inserter",
 ] }
 uuid = { version = "1.8.0", features = ["v4", "serde"] }
-dashmap = { version = "5.5.3", features = ["serde"] }
+dashmap = { version = "6.1.0", features = ["serde"] }
 flate2 = "1.0.27"
 futures = "0.3.28"
 indexmap = "2.2.6"
@@ -35,7 +36,7 @@ serde_repr = "0.1.16"
 strum = { version = "0.26.2", features = ["derive"] }
 thiserror = "1.0.47"
 tokio = { version = "1.32.0", features = ["sync", "signal", "rt-multi-thread"] }
-tower-http = { version = "0.5.2", features = [
+tower-http = { version = "0.6.1", features = [
     "trace",
     "cors",
     "normalize-path",
@@ -54,8 +55,8 @@ twitch_api = { git = "https://github.com/twitch-rs/twitch_api", features = [
     "twitch_oauth2",
 ] }
 tmi = { version = "0.7.0", default-features = false, features = ["simd"] }
-axum-prometheus = "0.6.1"
-metrics-prometheus = "0.6.0"
+axum-prometheus = "0.7.0"
+metrics-prometheus = "0.7.0"
 axum-extra = { version = "0.9.3", features = ["typed-header"] }
 bitflags = { version = "2.5.0", features = ["serde"] }
 

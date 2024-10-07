@@ -109,7 +109,7 @@ impl Migrator {
                                 Some(Duration::from_secs(30)),
                                 Some(Duration::from_secs(180)),
                             )
-                            .with_max_entries(INSERT_BATCH_SIZE)
+                            .with_max_rows(INSERT_BATCH_SIZE)
                             .with_period(Some(Duration::from_secs(15)));
 
                         info!("Migrating channel {channel_id} date {year}-{month}");
@@ -143,10 +143,10 @@ impl Migrator {
 
                         debug!("Flushing messages");
                         let stats = inserter.end().await.context("Could not flush messages")?;
-                        if stats.entries > 0 {
+                        if stats.rows > 0 {
                             info!(
                                 "DB: {} entries ({} transactions) have been inserted",
-                                stats.entries, stats.transactions,
+                                stats.rows, stats.transactions,
                             );
                         }
 
@@ -223,10 +223,10 @@ impl Migrator {
         }
 
         let stats = inserter.commit().await?;
-        if stats.entries > 0 {
+        if stats.rows > 0 {
             info!(
                 "DB: {} entries ({} transactions) have been inserted",
-                stats.entries, stats.transactions,
+                stats.rows, stats.transactions,
             );
         }
 
@@ -265,7 +265,7 @@ async fn write_line<'a>(
                     // This is safe because despite the function signature,
                     // `inserter.write` only uses the value for serialization at the time of the method call, and not later
                     let msg: StructuredMessage<'static> = unsafe { std::mem::transmute(msg) };
-                    inserter.write(&msg).await?;
+                    inserter.write(&msg)?;
                 }
                 Err(err) => {
                     error!("Could not convert message {unstructured:?}: {err}");

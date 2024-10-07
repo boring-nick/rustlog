@@ -136,7 +136,7 @@ async fn migrate_partition(
             Some(Duration::from_secs(30)),
             Some(Duration::from_secs(180)),
         )
-        .with_max_entries(INSERT_BATCH_SIZE)
+        .with_max_rows(INSERT_BATCH_SIZE)
         .with_period(Some(Duration::from_secs(15)));
 
     let mut cursor = db
@@ -150,16 +150,13 @@ async fn migrate_partition(
                 // This is safe because despite the function signature,
                 // `inserter.write` only uses the value for serialization at the time of the method call, and not later
                 let msg: StructuredMessage<'static> = unsafe { std::mem::transmute(msg) };
-                inserter
-                    .write(&msg)
-                    .await
-                    .context("Failed to write message")?;
+                inserter.write(&msg).context("Failed to write message")?;
 
                 let stats = inserter.commit().await.context("Could not commit")?;
-                if stats.entries > 0 {
+                if stats.rows > 0 {
                     info!(
                         "Inserted {} messages from partition {partition}",
-                        stats.entries
+                        stats.rows
                     );
                 }
 

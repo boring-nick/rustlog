@@ -480,7 +480,7 @@ fn escape_tag(value: &str) -> Cow<'_, str> {
         out
     }
 
-    if value.contains(|c| c == ';' || c == ' ' || c == '\\' || c == '\r' || c == '\n') {
+    if value.contains([';', ' ', '\\', '\r', '\n']) {
         Cow::Owned(escape(value))
     } else {
         Cow::Borrowed(value)
