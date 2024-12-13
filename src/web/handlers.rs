@@ -2,14 +2,14 @@ use super::{
     responders::logs::LogsResponse,
     schema::{
         AvailableLogs, AvailableLogsParams, Channel, ChannelIdType, ChannelLogsByDatePath,
-        ChannelParam, ChannelsList, LogsParams, LogsPathChannel, LogsStats, SearchParams,
-        UserLogPathParams, UserLogsPath, UserParam,
+        ChannelLogsStats, ChannelParam, ChannelsList, LogsParams, LogsPathChannel, SearchParams,
+        UserLogPathParams, UserLogsPath, UserLogsStats, UserParam,
     },
 };
 use crate::{
     app::App,
     db::{
-        self, get_stats, read_available_channel_logs, read_available_user_logs, read_channel,
+        self, read_available_channel_logs, read_available_user_logs, read_channel,
         read_random_channel_line, read_random_user_line, read_user,
     },
     error::Error,
@@ -85,12 +85,12 @@ pub async fn get_channel_stats(
     }): Path<LogsPathChannel>,
     Query(range_params): Query<LogRangeParams>,
     app: State<App>,
-) -> Result<Json<LogsStats>> {
+) -> Result<Json<ChannelLogsStats>> {
     let channel_id = match channel_id_type {
         ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
         ChannelIdType::Id => channel.clone(),
     };
-    let stats = get_stats(&app.db, &channel_id, None, range_params).await?;
+    let stats = db::get_channel_stats(&app.db, &channel_id, range_params).await?;
 
     Ok(Json(stats))
 }
@@ -99,7 +99,7 @@ pub async fn get_user_stats_by_name(
     path: Path<UserLogPathParams>,
     range_params: Query<LogRangeParams>,
     app: State<App>,
-) -> Result<Json<LogsStats>> {
+) -> Result<Json<UserLogsStats>> {
     get_user_stats(path, false, range_params, app).await
 }
 
@@ -107,7 +107,7 @@ pub async fn get_user_stats_by_id(
     path: Path<UserLogPathParams>,
     range_params: Query<LogRangeParams>,
     app: State<App>,
-) -> Result<Json<LogsStats>> {
+) -> Result<Json<UserLogsStats>> {
     get_user_stats(path, true, range_params, app).await
 }
 
@@ -120,7 +120,7 @@ async fn get_user_stats(
     user_is_id: bool,
     Query(range_params): Query<LogRangeParams>,
     app: State<App>,
-) -> Result<Json<LogsStats>> {
+) -> Result<Json<UserLogsStats>> {
     let channel_id = match channel_id_type {
         ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
         ChannelIdType::Id => channel.clone(),
@@ -131,7 +131,7 @@ async fn get_user_stats(
         app.get_user_id_by_name(&user).await?
     };
 
-    let stats = get_stats(&app.db, &channel_id, Some(&user_id), range_params).await?;
+    let stats = db::get_user_stats(&app.db, &channel_id, &user_id, range_params).await?;
 
     Ok(Json(stats))
 }

@@ -3,6 +3,7 @@ pub mod schema;
 pub mod writer;
 
 pub use migrations::run as setup_db;
+use serde::Deserialize;
 use writer::FlushBuffer;
 
 use crate::{
@@ -11,11 +12,11 @@ use crate::{
         schema::LogRangeParams,
         stream::{FlushBufferResponse, LogsStream},
     },
-    web::schema::{AvailableLogDate, LogsParams, LogsStats},
+    web::schema::{AvailableLogDate, ChannelLogsStats, LogsParams, UserLogsStats},
     Result,
 };
 use chrono::{DateTime, Datelike, Duration, Utc};
-use clickhouse::{query::RowCursor, Client};
+use clickhouse::{query::RowCursor, Client, Row};
 use rand::{seq::IteratorRandom, thread_rng};
 use schema::StructuredMessage;
 use tracing::debug;
@@ -292,17 +293,18 @@ pub async fn search_user_logs(
     LogsStream::new_cursor(cursor, buffer_response).await
 }
 
-pub async fn get_stats(
+pub async fn get_channel_stats(
     db: &Client,
     channel_id: &str,
-    user_id: Option<&str>,
     range_params: LogRangeParams,
-) -> Result<LogsStats> {
-    let mut query = "SELECT count(*) FROM message_structured WHERE channel_id = ?".to_owned();
-
-    if user_id.is_some() {
-        query.push_str(" AND user_id = ?");
+) -> Result<ChannelLogsStats> {
+    #[derive(Deserialize, Row)]
+    struct StatsRow {
+        pub cnt: u64,
+        pub user_id: String,
     }
+
+    let mut query = "SELECT count(*) FROM message_structured WHERE channel_id = ?".to_owned();
 
     if range_params.range().is_some() {
         query.push_str(" AND timestamp >= ? AND timestamp < ?");
@@ -310,9 +312,64 @@ pub async fn get_stats(
 
     let mut query = db.query(&query).bind(channel_id);
 
-    if let Some(id) = user_id {
-        query = query.bind(id);
+    if let Some((from, to)) = range_params.range() {
+        query = query
+            .bind(from.timestamp_millis() as f64 / 1000.0)
+            .bind(to.timestamp_millis() as f64 / 1000.0);
     }
+
+    let total_count = query.fetch_one().await?;
+
+    let mut query =
+        "SELECT count(*) as cnt, user_id FROM message_structured WHERE channel_id = ?".to_owned();
+
+    if range_params.range().is_some() {
+        query.push_str(" AND timestamp >= ? AND timestamp < ?");
+    }
+
+    query.push_str(" GROUP BY user_id ORDER BY cnt DESC LIMIT 5");
+
+    let mut query = db.query(&query).bind(channel_id);
+
+    if let Some((from, to)) = range_params.range() {
+        query = query
+            .bind(from.timestamp_millis() as f64 / 1000.0)
+            .bind(to.timestamp_millis() as f64 / 1000.0);
+    }
+
+    let stats_rows = query.fetch_all::<StatsRow>().await?;
+    let top_chatters = stats_rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.user_id,
+                UserLogsStats {
+                    message_count: row.cnt,
+                },
+            )
+        })
+        .collect();
+
+    Ok(ChannelLogsStats {
+        message_count: total_count,
+        top_chatters,
+    })
+}
+
+pub async fn get_user_stats(
+    db: &Client,
+    channel_id: &str,
+    user_id: &str,
+    range_params: LogRangeParams,
+) -> Result<UserLogsStats> {
+    let mut query =
+        "SELECT count(*) FROM message_structured WHERE channel_id = ? AND user_id = ?".to_owned();
+
+    if range_params.range().is_some() {
+        query.push_str(" AND timestamp >= ? AND timestamp < ?");
+    }
+
+    let mut query = db.query(&query).bind(channel_id).bind(user_id);
 
     if let Some((from, to)) = range_params.range() {
         query = query
@@ -322,7 +379,7 @@ pub async fn get_stats(
 
     let count = query.fetch_one().await?;
 
-    Ok(LogsStats {
+    Ok(UserLogsStats {
         message_count: count,
     })
 }

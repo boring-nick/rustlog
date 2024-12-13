@@ -1,4 +1,5 @@
 use super::responders::logs::{JsonResponseType, LogsResponseType};
+use indexmap::IndexMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt::Display;
@@ -167,6 +168,13 @@ pub struct UserLogPathParams {
 
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct LogsStats {
+pub struct ChannelLogsStats {
+    pub message_count: u64,
+    pub top_chatters: IndexMap<String, UserLogsStats>,
+}
+
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UserLogsStats {
     pub message_count: u64,
 }
