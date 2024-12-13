@@ -35,7 +35,7 @@ use tower_http::{
 };
 use tracing::{debug, info};
 
-const CAPABILITIES: &[&str] = &["arbitrary-range-query"];
+const CAPABILITIES: &[&str] = &["arbitrary-range-query", "search"];
 
 pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessage>) {
     aide::gen::on_error(|error| {

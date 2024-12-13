@@ -24,7 +24,7 @@ use axum::{
     Json,
 };
 use axum_extra::{headers::CacheControl, TypedHeader};
-use chrono::{Days, Months, NaiveDate, NaiveTime, Utc};
+use chrono::{DateTime, Days, Months, NaiveDate, NaiveTime, Utc};
 use rand::{distributions::Alphanumeric, thread_rng, Rng};
 use std::time::Duration;
 use tracing::debug;
@@ -51,7 +51,7 @@ pub async fn get_channel_logs(
         channel_id_type,
         channel,
     }): Path<LogsPathChannel>,
-    range_params: Option<Query<LogRangeParams>>,
+    Query(range_params): Query<LogRangeParams>,
     RawQuery(query): RawQuery,
     app: State<App>,
 ) -> Result<Response> {
@@ -60,8 +60,9 @@ pub async fn get_channel_logs(
         ChannelIdType::Id => channel.clone(),
     };
 
-    if let Some(Query(params)) = range_params {
-        let logs = get_channel_logs_inner(&app, &channel_id, params).await?;
+    if let Some(range) = range_params.range() {
+        let logs =
+            get_channel_logs_inner(&app, &channel_id, range_params.logs_params, range).await?;
         Ok(logs.into_response())
     } else {
         let available_logs = read_available_channel_logs(&app.db, &channel_id).await?;
@@ -102,30 +103,25 @@ pub async fn get_channel_logs_by_date(
         .checked_add_days(Days::new(1))
         .ok_or_else(|| Error::InvalidParam("Date out of range".to_owned()))?;
 
-    let params = LogRangeParams {
-        from,
-        to,
-        logs_params,
-    };
-
-    get_channel_logs_inner(&app, &channel_id, params).await
+    get_channel_logs_inner(&app, &channel_id, logs_params, (from, to)).await
 }
 
 async fn get_channel_logs_inner(
     app: &App,
     channel_id: &str,
-    channel_log_params: LogRangeParams,
+    params: LogsParams,
+    range: (DateTime<Utc>, DateTime<Utc>),
 ) -> Result<impl IntoApiResponse> {
     app.check_opted_out(channel_id, None)?;
 
-    let stream = read_channel(&app.db, channel_id, channel_log_params, &app.flush_buffer).await?;
+    let stream = read_channel(&app.db, channel_id, params, &app.flush_buffer, range).await?;
 
     let logs = LogsResponse {
-        response_type: channel_log_params.logs_params.response_type(),
+        response_type: params.response_type(),
         stream,
     };
 
-    let cache = if Utc::now() < channel_log_params.to {
+    let cache = if Utc::now() < range.1 {
         no_cache_header()
     } else {
         cache_header(36000)
@@ -136,7 +132,7 @@ async fn get_channel_logs_inner(
 
 pub async fn get_user_logs_by_name(
     path: Path<UserLogPathParams>,
-    range_params: Option<Query<LogRangeParams>>,
+    Query(range_params): Query<LogRangeParams>,
     query: RawQuery,
     app: State<App>,
 ) -> Result<impl IntoApiResponse> {
@@ -145,7 +141,7 @@ pub async fn get_user_logs_by_name(
 
 pub async fn get_user_logs_id(
     path: Path<UserLogPathParams>,
-    range_params: Option<Query<LogRangeParams>>,
+    Query(range_params): Query<LogRangeParams>,
     query: RawQuery,
     app: State<App>,
 ) -> Result<impl IntoApiResponse> {
@@ -158,7 +154,7 @@ async fn get_user_logs(
         channel,
         user,
     }): Path<UserLogPathParams>,
-    range_params: Option<Query<LogRangeParams>>,
+    range_params: LogRangeParams,
     RawQuery(query): RawQuery,
     user_is_id: bool,
     app: State<App>,
@@ -175,8 +171,10 @@ async fn get_user_logs(
 
     app.check_opted_out(&channel_id, Some(&user_id))?;
 
-    if let Some(Query(params)) = range_params {
-        let logs = get_user_logs_inner(&app, &channel_id, &user_id, params).await?;
+    if let Some(range) = range_params.range() {
+        let logs =
+            get_user_logs_inner(&app, &channel_id, &user_id, range_params.logs_params, range)
+                .await?;
         Ok(logs.into_response())
     } else {
         let available_logs = read_available_user_logs(&app.db, &channel_id, &user_id).await?;
@@ -240,29 +238,32 @@ async fn get_user_logs_by_date(
         .checked_add_months(Months::new(1))
         .ok_or_else(|| Error::InvalidParam("Date out of range".to_owned()))?;
 
-    let params = LogRangeParams {
-        from,
-        to,
-        logs_params,
-    };
-
-    get_user_logs_inner(&app, &channel_id, &user_id, params).await
+    get_user_logs_inner(&app, &channel_id, &user_id, logs_params, (from, to)).await
 }
 
 async fn get_user_logs_inner(
     app: &App,
     channel_id: &str,
     user_id: &str,
-    log_params: LogRangeParams,
+    logs_params: LogsParams,
+    range: (DateTime<Utc>, DateTime<Utc>),
 ) -> Result<impl IntoApiResponse> {
-    let stream = read_user(&app.db, channel_id, user_id, log_params, &app.flush_buffer).await?;
+    let stream = read_user(
+        &app.db,
+        channel_id,
+        user_id,
+        logs_params,
+        &app.flush_buffer,
+        range,
+    )
+    .await?;
 
     let logs = LogsResponse {
         stream,
-        response_type: log_params.logs_params.response_type(),
+        response_type: logs_params.response_type(),
     };
 
-    let cache = if Utc::now() < log_params.to {
+    let cache = if Utc::now() < range.1 {
         no_cache_header()
     } else {
         cache_header(36000)

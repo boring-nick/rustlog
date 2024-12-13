@@ -1,16 +1,18 @@
+use chrono::{DateTime, Utc};
+
 use crate::{
     db::{schema::StructuredMessage, writer::FlushBuffer},
-    logs::schema::LogRangeParams,
+    web::schema::LogsParams,
 };
 
 #[derive(Debug)]
 pub struct FlushBufferResponse {
     pub messages: Vec<StructuredMessage<'static>>,
-    pub params: LogRangeParams,
+    pub params: LogsParams,
 }
 
 impl FlushBufferResponse {
-    pub fn empty(params: LogRangeParams) -> Self {
+    pub fn empty(params: LogsParams) -> Self {
         Self {
             messages: vec![],
             params,
@@ -21,10 +23,10 @@ impl FlushBufferResponse {
         buffer: &FlushBuffer,
         channel_id: &str,
         user_id: Option<&str>,
-        params: LogRangeParams,
+        params: LogsParams,
+        (from, to): (DateTime<Utc>, DateTime<Utc>),
     ) -> Self {
-        let timestamp_range =
-            (params.from.timestamp_millis() as u64)..(params.to.timestamp_millis() as u64);
+        let timestamp_range = (from.timestamp_millis() as u64)..(to.timestamp_millis() as u64);
 
         let mut messages = if let Some(user_id) = user_id {
             buffer
@@ -36,11 +38,11 @@ impl FlushBufferResponse {
                 .await
         };
 
-        if params.logs_params.reverse {
+        if params.reverse {
             messages.reverse();
         }
 
-        if let Some(offset) = params.logs_params.offset {
+        if let Some(offset) = params.offset {
             if offset as usize > messages.len() {
                 messages.clear();
             } else {
@@ -53,9 +55,9 @@ impl FlushBufferResponse {
 
     pub fn normalized_limit(&self) -> Option<u64> {
         let count = self.messages.len() as u64;
-        let limit = self.params.logs_params.limit;
+        let limit = self.params.limit;
 
-        if self.params.logs_params.reverse {
+        if self.params.reverse {
             limit.map(|limit| limit.saturating_sub(count))
         } else {
             limit
@@ -64,9 +66,9 @@ impl FlushBufferResponse {
 
     pub fn normalized_offset(&self) -> Option<u64> {
         let count = self.len() as u64;
-        let offset = self.params.logs_params.offset;
+        let offset = self.params.offset;
 
-        if self.params.logs_params.reverse {
+        if self.params.reverse {
             offset.map(|offset| offset.saturating_sub(count))
         } else {
             offset
@@ -82,6 +84,6 @@ impl FlushBufferResponse {
     }
 
     pub fn is_at_start(&self) -> bool {
-        self.params.logs_params.reverse
+        self.params.reverse
     }
 }
