@@ -340,13 +340,9 @@ pub async fn get_channel_stats(
     let stats_rows = query.fetch_all::<StatsRow>().await?;
     let top_chatters = stats_rows
         .into_iter()
-        .map(|row| {
-            (
-                row.user_id,
-                UserLogsStats {
-                    message_count: row.cnt,
-                },
-            )
+        .map(|row| UserLogsStats {
+            user_id: row.user_id,
+            message_count: row.cnt,
         })
         .collect();
 
@@ -381,6 +377,7 @@ pub async fn get_user_stats(
 
     Ok(UserLogsStats {
         message_count: count,
+        user_id: user_id.to_owned(),
     })
 }
 
