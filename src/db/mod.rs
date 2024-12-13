@@ -7,8 +7,11 @@ use writer::FlushBuffer;
 
 use crate::{
     error::Error,
-    logs::stream::{FlushBufferResponse, LogsStream},
-    web::schema::{AvailableLogDate, LogsParams},
+    logs::{
+        schema::LogRangeParams,
+        stream::{FlushBufferResponse, LogsStream},
+    },
+    web::schema::{AvailableLogDate, LogsParams, LogsStats},
     Result,
 };
 use chrono::{DateTime, Datelike, Duration, Utc};
@@ -287,6 +290,41 @@ pub async fn search_user_logs(
         .fetch()?;
 
     LogsStream::new_cursor(cursor, buffer_response).await
+}
+
+pub async fn get_stats(
+    db: &Client,
+    channel_id: &str,
+    user_id: Option<&str>,
+    range_params: LogRangeParams,
+) -> Result<LogsStats> {
+    let mut query = "SELECT count(*) FROM message_structured WHERE channel_id = ?".to_owned();
+
+    if user_id.is_some() {
+        query.push_str(" AND user_id = ?");
+    }
+
+    if range_params.range().is_some() {
+        query.push_str(" AND timestamp >= ? AND timestamp < ?");
+    }
+
+    let mut query = db.query(&query).bind(channel_id);
+
+    if let Some(id) = user_id {
+        query = query.bind(id);
+    }
+
+    if let Some((from, to)) = range_params.range() {
+        query = query
+            .bind(from.timestamp_millis() as f64 / 1000.0)
+            .bind(to.timestamp_millis() as f64 / 1000.0);
+    }
+
+    let count = query.fetch_one().await?;
+
+    Ok(LogsStats {
+        message_count: count,
+    })
 }
 
 fn apply_limit_offset(query: &mut String, buffer_response: &FlushBufferResponse) {

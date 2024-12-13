@@ -35,7 +35,7 @@ use tower_http::{
 };
 use tracing::{debug, info};
 
-const CAPABILITIES: &[&str] = &["arbitrary-range-query", "search"];
+const CAPABILITIES: &[&str] = &["arbitrary-range-query", "search", "stats"];
 
 pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessage>) {
     aide::gen::on_error(|error| {
@@ -86,6 +86,12 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
             "/:channel_id_type/:channel",
             get_with(handlers::get_channel_logs, |op| {
                 op.description("Get channel logs. If the `to` and `from` query params are not given, redirect to latest available day")
+            }),
+        )
+        .api_route(
+            "/:channel_id_type/:channel/stats",
+            get_with(handlers::get_channel_stats, |op| {
+                op.description("Get channel stats")
             }),
         )
         // For some reason axum considers it a path overlap if user id type is dynamic
@@ -147,6 +153,18 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
             "/:channel_id_type/:channel/userid/:user/search",
             get_with(handlers::search_user_logs_by_id, |op| {
                 op.description("Search user logs using the provided query")
+            }),
+        )
+        .api_route(
+            "/:channel_id_type/:channel/user/:user/stats",
+            get_with(handlers::get_user_stats_by_name, |op| {
+                op.description("Get user stats")
+            }),
+        )
+        .api_route(
+            "/:channel_id_type/:channel/userid/:user/stats",
+            get_with(handlers::get_user_stats_by_id, |op| {
+                op.description("Get user stats")
             }),
         )
         .api_route("/optout", post(handlers::optout))

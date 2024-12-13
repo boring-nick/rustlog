@@ -164,3 +164,9 @@ pub struct UserLogPathParams {
     pub channel: String,
     pub user: String,
 }
+
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct LogsStats {
+    pub message_count: u64,
+}
