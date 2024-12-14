@@ -321,10 +321,10 @@ pub async fn get_channel_stats(
     let total_count = query.fetch_one().await?;
 
     let mut query =
-        "SELECT sum(count) as cnt, user_id FROM message_count WHERE channel_id = ? AND user_id != ''".to_owned();
+        "SELECT count(*) as cnt, user_id FROM message_structured WHERE channel_id = ? AND user_id != ''".to_owned();
 
     if range_params.range().is_some() {
-        query.push_str(" AND date >= toDate32(?) AND date < toDate32(?)");
+        query.push_str(" AND timestamp >= ? AND timestamp < ?");
     }
 
     query.push_str(" GROUP BY user_id ORDER BY cnt DESC LIMIT 5");

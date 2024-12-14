@@ -169,8 +169,6 @@ pub struct UserLogPathParams {
 #[serde(rename_all = "camelCase")]
 pub struct ChannelLogsStats {
     pub message_count: u64,
-    /// Note: the chatter stats are only accurate down to a day,
-    /// not to the exact time range specified in query params.
     pub top_chatters: Vec<UserLogsStats>,
 }
 
