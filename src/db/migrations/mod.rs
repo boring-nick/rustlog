@@ -71,6 +71,34 @@ String CODEC(ZSTD(10))
 
     run_migration(db, "6_structured_message", StructuredMigration { db_name }).await?;
 
+    run_migration(
+        db,
+        "7_message_count",
+        "
+CREATE MATERIALIZED VIEW message_count
+(
+    `channel_id` String,
+    `user_id` String,
+    `count` UInt64,
+    `date` Date32
+)
+ENGINE = AggregatingMergeTree
+ORDER BY (channel_id, user_id, date) 
+POPULATE
+AS SELECT
+    channel_id,
+    user_id,
+    count(*),
+    toStartOfDay(timestamp) AS date
+FROM message_structured
+GROUP BY
+    channel_id,
+    user_id,
+    date
+    ",
+    )
+    .await?;
+
     Ok(())
 }
 
