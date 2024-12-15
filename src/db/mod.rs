@@ -327,7 +327,7 @@ pub async fn get_channel_stats(
         query.push_str(" AND timestamp >= ? AND timestamp < ?");
     }
 
-    query.push_str(" GROUP BY user_id ORDER BY cnt DESC LIMIT 5");
+    query.push_str(" GROUP BY user_id ORDER BY cnt DESC LIMIT 5 SETTINGS use_query_cache = 1, query_cache_ttl = 300");
 
     let mut query = db.query(&query).bind(channel_id);
 
