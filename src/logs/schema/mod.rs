@@ -4,8 +4,6 @@ use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::web::schema::LogsParams;
-
 #[derive(Deserialize, JsonSchema, Clone, Copy, Debug)]
 pub struct LogRangeParams {
     #[schemars(with = "String")]
@@ -14,8 +12,6 @@ pub struct LogRangeParams {
     #[schemars(with = "String")]
     /// RFC 3339 end date
     pub to: Option<DateTime<Utc>>,
-    #[serde(flatten)]
-    pub logs_params: LogsParams,
 }
 
 impl LogRangeParams {

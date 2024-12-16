@@ -52,6 +52,7 @@ pub async fn get_channel_logs(
         channel,
     }): Path<LogsPathChannel>,
     Query(range_params): Query<LogRangeParams>,
+    Query(logs_params): Query<LogsParams>,
     RawQuery(query): RawQuery,
     app: State<App>,
 ) -> Result<Response> {
@@ -61,8 +62,7 @@ pub async fn get_channel_logs(
     };
 
     if let Some(range) = range_params.range() {
-        let logs =
-            get_channel_logs_inner(&app, &channel_id, range_params.logs_params, range).await?;
+        let logs = get_channel_logs_inner(&app, &channel_id, logs_params, range).await?;
         Ok(logs.into_response())
     } else {
         let available_logs = read_available_channel_logs(&app.db, &channel_id).await?;
@@ -191,19 +191,21 @@ async fn get_channel_logs_inner(
 pub async fn get_user_logs_by_name(
     path: Path<UserLogPathParams>,
     Query(range_params): Query<LogRangeParams>,
+    Query(logs_params): Query<LogsParams>,
     query: RawQuery,
     app: State<App>,
 ) -> Result<impl IntoApiResponse> {
-    get_user_logs(path, range_params, query, false, app).await
+    get_user_logs(path, range_params, logs_params, query, false, app).await
 }
 
 pub async fn get_user_logs_id(
     path: Path<UserLogPathParams>,
     Query(range_params): Query<LogRangeParams>,
+    Query(logs_params): Query<LogsParams>,
     query: RawQuery,
     app: State<App>,
 ) -> Result<impl IntoApiResponse> {
-    get_user_logs(path, range_params, query, true, app).await
+    get_user_logs(path, range_params, logs_params, query, true, app).await
 }
 
 async fn get_user_logs(
@@ -213,6 +215,7 @@ async fn get_user_logs(
         user,
     }): Path<UserLogPathParams>,
     range_params: LogRangeParams,
+    logs_params: LogsParams,
     RawQuery(query): RawQuery,
     user_is_id: bool,
     app: State<App>,
@@ -230,9 +233,7 @@ async fn get_user_logs(
     app.check_opted_out(&channel_id, Some(&user_id))?;
 
     if let Some(range) = range_params.range() {
-        let logs =
-            get_user_logs_inner(&app, &channel_id, &user_id, range_params.logs_params, range)
-                .await?;
+        let logs = get_user_logs_inner(&app, &channel_id, &user_id, logs_params, range).await?;
         Ok(logs.into_response())
     } else {
         let available_logs = read_available_user_logs(&app.db, &channel_id, &user_id).await?;
