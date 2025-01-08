@@ -438,10 +438,19 @@ pub async fn search_user_logs_by_name(
         channel,
         user,
     }): Path<UserLogPathParams>,
-    params: Query<SearchParams>,
+    Query(search_params): Query<SearchParams>,
+    Query(logs_params): Query<LogsParams>,
 ) -> Result<impl IntoApiResponse> {
     let user_id = app.get_user_id_by_name(&user).await?;
-    search_user_logs(app, channel_id_type, channel, user_id, params).await
+    search_user_logs(
+        app,
+        channel_id_type,
+        channel,
+        user_id,
+        search_params,
+        logs_params,
+    )
+    .await
 }
 
 pub async fn search_user_logs_by_id(
@@ -451,9 +460,18 @@ pub async fn search_user_logs_by_id(
         channel,
         user,
     }): Path<UserLogPathParams>,
-    params: Query<SearchParams>,
+    Query(search_params): Query<SearchParams>,
+    Query(logs_params): Query<LogsParams>,
 ) -> Result<impl IntoApiResponse> {
-    search_user_logs(app, channel_id_type, channel, user, params).await
+    search_user_logs(
+        app,
+        channel_id_type,
+        channel,
+        user,
+        search_params,
+        logs_params,
+    )
+    .await
 }
 
 async fn search_user_logs(
@@ -461,7 +479,8 @@ async fn search_user_logs(
     channel_id_type: ChannelIdType,
     channel: String,
     user_id: String,
-    params: Query<SearchParams>,
+    search_params: SearchParams,
+    logs_params: LogsParams,
 ) -> Result<impl IntoApiResponse> {
     let channel_id = match channel_id_type {
         ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
@@ -474,14 +493,14 @@ async fn search_user_logs(
         &app.db,
         &channel_id,
         &user_id,
-        &params.q,
-        params.logs_params,
+        &search_params.q,
+        logs_params,
     )
     .await?;
 
     let logs = LogsResponse {
         stream,
-        response_type: params.logs_params.response_type(),
+        response_type: logs_params.response_type(),
     };
     Ok(logs)
 }
