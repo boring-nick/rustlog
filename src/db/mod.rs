@@ -1,7 +1,6 @@
 mod migrations;
 pub mod schema;
 pub mod writer;
-
 use std::collections::HashSet;
 
 pub use migrations::run as setup_db;
@@ -387,27 +386,21 @@ pub async fn get_user_name_history(
     db: &Client,
     user_id: &str,
 ) -> Result<PreviousNames> {
-    #[derive(Deserialize, Row, Debug)]
+    #[derive(Deserialize, Row)]
     struct SingleNameHistory {
         pub user_login: String,
-        pub last_timestamp: String,
-        pub first_timestamp: String,
+        pub last_timestamp: i32,
+        pub first_timestamp: i32,
     }
 
-    let query = "SELECT user_login, MAX(timestamp) AS last_timestamp FROM rustlog.message_structured WHERE user_id = ? GROUP BY user_login".to_owned();
+    let query = "SELECT user_login, toDateTime((MAX(timestamp))) AS last_timestamp, toDateTime(MIN(timestamp)) AS first_timestamp FROM message_structured WHERE user_id = ? GROUP BY user_login".to_owned();
 
     let query = db.query(&query).bind(user_id);
 
     let name_history_rows = query.fetch_all::<SingleNameHistory>().await?;
 
-    // Log to console the name history rows
-    for name_history_row in &name_history_rows {
-        println!("Name history row: {:?}", name_history_row);
-    }
-
     let mut seen_logins = HashSet::new();
     
-    // If name starts with ':' (NOTICE, CLEARCHAT? Parse error?), remove char and deduplicate rows
     let names = name_history_rows
         .into_iter()
         .filter_map(|name_history_row: SingleNameHistory| {
@@ -420,8 +413,12 @@ pub async fn get_user_name_history(
             if seen_logins.insert(sanitized_user_login.clone()) {
                 Some(PreviousName {
                     user_login: sanitized_user_login,
-                    last_timestamp: name_history_row.last_timestamp,
-                    first_timestamp: name_history_row.first_timestamp,
+                    last_timestamp: DateTime::from_timestamp(name_history_row.last_timestamp.into(), 0)
+                        .expect("Invalid DateTime")
+                        .to_rfc3339(),
+                    first_timestamp: DateTime::from_timestamp(name_history_row.first_timestamp.into(), 0)
+                        .expect("Invalid DateTime")
+                        .to_rfc3339(),
                 })
             } else {
                 None
