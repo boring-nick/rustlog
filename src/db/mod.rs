@@ -2,6 +2,8 @@ mod migrations;
 pub mod schema;
 pub mod writer;
 
+use std::collections::HashSet;
+
 pub use migrations::run as setup_db;
 use serde::Deserialize;
 use writer::FlushBuffer;
@@ -12,7 +14,7 @@ use crate::{
         schema::LogRangeParams,
         stream::{FlushBufferResponse, LogsStream},
     },
-    web::schema::{AvailableLogDate, ChannelLogsStats, LogsParams, UserLogsStats},
+    web::schema::{AvailableLogDate, ChannelLogsStats, LogsParams, PreviousName, PreviousNames, UserLogsStats},
     Result,
 };
 use chrono::{DateTime, Datelike, Duration, Utc};
@@ -379,6 +381,55 @@ pub async fn get_user_stats(
         message_count: count,
         user_id: user_id.to_owned(),
     })
+}
+
+pub async fn get_user_name_history(
+    db: &Client,
+    user_id: &str,
+) -> Result<PreviousNames> {
+    #[derive(Deserialize, Row, Debug)]
+    struct SingleNameHistory {
+        pub user_login: String,
+        pub last_timestamp: String,
+        pub first_timestamp: String,
+    }
+
+    let query = "SELECT user_login, MAX(timestamp) AS last_timestamp FROM rustlog.message_structured WHERE user_id = ? GROUP BY user_login".to_owned();
+
+    let query = db.query(&query).bind(user_id);
+
+    let name_history_rows = query.fetch_all::<SingleNameHistory>().await?;
+
+    // Log to console the name history rows
+    for name_history_row in &name_history_rows {
+        println!("Name history row: {:?}", name_history_row);
+    }
+
+    let mut seen_logins = HashSet::new();
+    
+    // If name starts with ':' (NOTICE, CLEARCHAT? Parse error?), remove char and deduplicate rows
+    let names = name_history_rows
+        .into_iter()
+        .filter_map(|name_history_row: SingleNameHistory| {
+            let sanitized_user_login = if name_history_row.user_login.starts_with(':') {
+                name_history_row.user_login.chars().skip(1).collect::<String>()
+            } else {
+                name_history_row.user_login.clone()
+            };
+
+            if seen_logins.insert(sanitized_user_login.clone()) {
+                Some(PreviousName {
+                    user_login: sanitized_user_login,
+                    last_timestamp: name_history_row.last_timestamp,
+                    first_timestamp: name_history_row.first_timestamp,
+                })
+            } else {
+                None
+            }
+        })
+        .collect::<PreviousNames>();
+
+    Ok(names)
 }
 
 fn apply_limit_offset(query: &mut String, buffer_response: &FlushBufferResponse) {

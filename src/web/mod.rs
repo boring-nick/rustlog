@@ -167,6 +167,12 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
                 op.description("Get user stats")
             }),
         )
+        .api_route(
+            "/namehistory/:user_id",
+            get_with(handlers::get_user_name_history, |op| {
+                op.description("Get user name history by provided user id")
+            }),
+        )
         .api_route("/optout", post(handlers::optout))
         .api_route("/capabilities", get(capabilities))
         .route("/docs", Redoc::new("/openapi.json").axum_route())

@@ -176,3 +176,17 @@ pub struct UserLogsStats {
     pub user_id: String,
     pub message_count: u64,
 }
+
+#[derive(Deserialize, JsonSchema)]
+pub struct UserNameHistoryParam {
+    pub user_id: String,
+}
+
+#[derive(Serialize, JsonSchema)]
+pub struct PreviousName {
+    pub user_login: String,
+    pub last_timestamp: String,
+    pub first_timestamp: String,
+}
+
+pub type PreviousNames = Vec<PreviousName>;
