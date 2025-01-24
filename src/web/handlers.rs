@@ -131,6 +131,8 @@ async fn get_user_stats(
         app.get_user_id_by_name(&user).await?
     };
 
+    app.check_opted_out(&channel_id, Some(&user_id))?;
+
     let stats = db::get_user_stats(&app.db, &channel_id, &user_id, range_params).await?;
 
     Ok(Json(stats))
