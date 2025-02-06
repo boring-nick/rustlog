@@ -13,7 +13,7 @@ use crate::{
         schema::LogRangeParams,
         stream::{FlushBufferResponse, LogsStream},
     },
-    web::schema::{AvailableLogDate, ChannelLogsStats, LogsParams, PreviousName, PreviousNames, UserLogsStats},
+    web::schema::{AvailableLogDate, ChannelLogsStats, LogsParams, PreviousName, UserLogsStats},
     Result,
 };
 use chrono::{DateTime, Datelike, Duration, Utc};
@@ -385,7 +385,7 @@ pub async fn get_user_stats(
 pub async fn get_user_name_history(
     db: &Client,
     user_id: &str,
-) -> Result<PreviousNames> {
+) -> Result<Vec<PreviousName>> {
     #[derive(Deserialize, Row)]
     struct SingleNameHistory {
         pub user_login: String,
@@ -393,7 +393,7 @@ pub async fn get_user_name_history(
         pub first_timestamp: i32,
     }
 
-    let query = "SELECT user_login, toDateTime((MAX(timestamp))) AS last_timestamp, toDateTime(MIN(timestamp)) AS first_timestamp FROM message_structured WHERE user_id = ? GROUP BY user_login".to_owned();
+    let query = "SELECT user_login, toDateTime((MAX(timestamp))) AS last_timestamp, toDateTime(MIN(timestamp)) AS first_timestamp FROM message_structured WHERE user_id = ? GROUP BY user_login SETTINGS use_query_cache = 1, query_cache_ttl = 600".to_owned();
 
     let query = db.query(&query).bind(user_id);
 
@@ -404,12 +404,7 @@ pub async fn get_user_name_history(
     let names = name_history_rows
         .into_iter()
         .filter_map(|name_history_row: SingleNameHistory| {
-            let sanitized_user_login = if name_history_row.user_login.starts_with(':') {
-                name_history_row.user_login.chars().skip(1).collect::<String>()
-            } else {
-                name_history_row.user_login.clone()
-            };
-
+            let sanitized_user_login = name_history_row.user_login.trim_start_matches(':').to_owned();
             if seen_logins.insert(sanitized_user_login.clone()) {
                 Some(PreviousName {
                     user_login: sanitized_user_login,
@@ -424,7 +419,7 @@ pub async fn get_user_name_history(
                 None
             }
         })
-        .collect::<PreviousNames>();
+        .collect::<Vec<PreviousName>>();
 
     Ok(names)
 }

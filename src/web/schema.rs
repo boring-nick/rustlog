@@ -188,5 +188,3 @@ pub struct PreviousName {
     pub last_timestamp: String,
     pub first_timestamp: String,
 }
-
-pub type PreviousNames = Vec<PreviousName>;
