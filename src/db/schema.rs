@@ -391,7 +391,17 @@ impl<'a> StructuredMessage<'a> {
         let mut out = String::with_capacity(self.text.len() + tags.len() * 4);
         out.push('@');
 
-        for (i, (tag, value)) in tags.iter().enumerate() {
+        for (i, (tag, value)) in tags
+            .iter()
+            .filter(|(_, value)| {
+                // Exclude empty tags for messages other than privmsg or usernotice
+                match self.message_type {
+                    MessageType::PrivMsg | MessageType::UserNotice => true,
+                    _ => !value.is_empty(),
+                }
+            })
+            .enumerate()
+        {
             if i > 0 {
                 out.push(';');
             }
@@ -419,8 +429,13 @@ impl<'a> StructuredMessage<'a> {
         );
 
         match self.message_type {
-            MessageType::PrivMsg | MessageType::UserNotice => {
+            MessageType::PrivMsg => {
                 let _ = write!(out, " :{}", self.text);
+            }
+            MessageType::UserNotice | MessageType::ClearChat | MessageType::ClearMsg => {
+                if !self.text.is_empty() {
+                    let _ = write!(out, " :{}", self.text);
+                }
             }
             _ => {
                 if !self.text.is_empty() {
@@ -664,6 +679,17 @@ mod tests {
     }
 
     #[test]
+    fn roundstrip_usernotice_sub_2() {
+        let unstructured = UnstructuredMessage {
+            channel_id: "26301881",
+            user_id: "27649691",
+            timestamp: 1738455537134,
+            raw: r"@badge-info=subscriber/1;badges=subscriber/0;color=#B22222;display-name=GrinKyle;emotes=;flags=;id=6992460e-92a1-4545-b8c4-357fc736ea45;login=grinkyle;mod=0;msg-id=sub;msg-param-cumulative-months=1;msg-param-months=0;msg-param-multimonth-duration=1;msg-param-multimonth-tenure=0;msg-param-should-share-streak=0;msg-param-sub-plan-name=Channel\sSubscription\s(sodapoppin);msg-param-sub-plan=Prime;msg-param-was-gifted=false;room-id=26301881;subscriber=1;system-msg=GrinKyle\ssubscribed\swith\sPrime.;tmi-sent-ts=1738455537134;user-id=27649691;user-type=;vip=0 :tmi.twitch.tv USERNOTICE #sodapoppin",
+        };
+        assert_roundtrip(unstructured);
+    }
+
+    #[test]
     fn roundtrip_roomstate() {
         let unstructured = UnstructuredMessage {
             channel_id: "118353866",
@@ -672,5 +698,33 @@ mod tests {
             raw: r"@emote-only=0;followers-only=-1;slow=0;subs-only=0;room-id=118353866;r9k=0 :tmi.twitch.tv ROOMSTATE #twitchmedia_qs_1",
         };
         assert_roundtrip(unstructured);
+    }
+
+    #[test]
+    fn clearchar_to_raw() {
+        let structured = StructuredMessage {
+            channel_id: "84180052".into(),
+            user_id: "71092938".into(),
+            timestamp: 1738454043142,
+            channel_login: "brian6932".into(),
+            id: Uuid::nil(),
+            message_type: MessageType::ClearChat,
+            user_login: "xqc".into(),
+            display_name: "".into(),
+            color: None,
+            user_type: "".into(),
+            badges: vec![],
+            badge_info: "".into(),
+            client_nonce: "".into(),
+            emotes: "".into(),
+            automod_flags: "".into(),
+            text: "xqc".into(),
+            message_flags: MessageFlags::default(),
+            extra_tags: vec![("target-user-id".into(), "71092938".into())],
+        };
+        let reconstructed_irc = structured.to_raw_irc();
+        assert_eq!(
+            "@tmi-sent-ts=1738454043142;room-id=84180052;user-id=71092938;target-user-id=71092938 :tmi.twitch.tv CLEARCHAT #brian6932 :xqc",
+            reconstructed_irc);
     }
 }
