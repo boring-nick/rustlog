@@ -21,7 +21,7 @@ use clickhouse::{query::RowCursor, Client, Row};
 use rand::{seq::IteratorRandom, thread_rng};
 use schema::StructuredMessage;
 use tracing::debug;
-use futures::stream::StreamExt;
+use futures::future::try_join_all;
 
 const CHANNEL_MULTI_QUERY_SIZE_DAYS: i64 = 14;
 
@@ -396,35 +396,27 @@ pub async fn get_user_name_history(
     let name_query = "SELECT DISTINCT user_login FROM message_structured WHERE user_id = ? SETTINGS use_query_cache = 1, query_cache_ttl = 600".to_owned();
     let name_query = db.query(&name_query).bind(user_id);
     let distinct_logins = name_query.fetch_all::<String>().await?;
-    if distinct_logins.len() == 0 {
+    if distinct_logins.is_empty() {
         return Ok(vec![]);
     }
 
     let sanitized_user_logins = distinct_logins
         .iter()
-        .map(|login| login.trim_start_matches(':').to_owned())
-        .collect::<Vec<String>>();
+        .map(|login| login.trim_start_matches(':').to_owned());
 
     let history_query = "SELECT toDateTime(MAX(timestamp)) AS last_timestamp, toDateTime(MIN(timestamp)) AS first_timestamp FROM message_structured WHERE (user_id = ?) AND (user_login = ?) SETTINGS use_query_cache = 1, query_cache_ttl = 600".to_owned();
 
-    let name_history_rows = sanitized_user_logins
-        .into_iter()
-        .map(|login| {
-            let query = history_query.clone();
-            async move {
-                let query = db.query(&query).bind(user_id).bind(&login);
-                query
-                    .fetch_one::<SingleNameHistory>()
-                    .await
-                    .map(|history| (login, history))
-                    .map_err(Error::from)
-            }
-        })
-        .collect::<futures::stream::FuturesOrdered<_>>()
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .collect::<Result<Vec<_>>>()?;
+    let name_history_rows = try_join_all(sanitized_user_logins.into_iter().map(|login| {
+        let query = history_query.clone();
+        async move {
+            let query = db.query(&query).bind(user_id).bind(&login);
+            query
+                .fetch_one::<SingleNameHistory>()
+                .await
+                .map(|history| (login, history))
+        }
+    }))
+    .await?;
 
     let mut seen_logins = HashSet::new();
     
@@ -435,17 +427,15 @@ pub async fn get_user_name_history(
                 Some(PreviousName {
                     user_login: login,
                     last_timestamp: DateTime::from_timestamp(history.last_timestamp.into(), 0)
-                        .expect("Invalid DateTime")
-                        .to_rfc3339(),
+                        .expect("Invalid DateTime"),
                     first_timestamp: DateTime::from_timestamp(history.first_timestamp.into(), 0)
-                        .expect("Invalid DateTime")
-                        .to_rfc3339(),
+                        .expect("Invalid DateTime"),
                 })
             } else {
                 None
             }
         })
-        .collect::<Vec<PreviousName>>();
+        .collect();
 
     Ok(names)
 }

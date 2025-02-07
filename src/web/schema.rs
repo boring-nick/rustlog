@@ -1,4 +1,5 @@
 use super::responders::logs::{JsonResponseType, LogsResponseType};
+use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt::Display;
@@ -185,6 +186,8 @@ pub struct UserNameHistoryParam {
 #[derive(Serialize, JsonSchema)]
 pub struct PreviousName {
     pub user_login: String,
-    pub last_timestamp: String,
-    pub first_timestamp: String,
+    #[schemars(with = "String")]
+    pub last_timestamp: DateTime<Utc>,
+    #[schemars(with = "String")]
+    pub first_timestamp: DateTime<Utc>,
 }
