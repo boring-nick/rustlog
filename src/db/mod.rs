@@ -18,10 +18,10 @@ use crate::{
 };
 use chrono::{DateTime, Datelike, Duration, Utc};
 use clickhouse::{query::RowCursor, Client, Row};
-use rand::{seq::IteratorRandom, thread_rng};
+use futures::future::try_join_all;
+use rand::{rng, seq::IteratorRandom};
 use schema::StructuredMessage;
 use tracing::debug;
-use futures::future::try_join_all;
 
 const CHANNEL_MULTI_QUERY_SIZE_DAYS: i64 = 14;
 
@@ -203,7 +203,7 @@ pub async fn read_random_user_line(
     }
 
     let offset = {
-        let mut rng = thread_rng();
+        let mut rng = rng();
         (0..total_count).choose(&mut rng).ok_or(Error::NotFound)
     }?;
 
@@ -241,7 +241,7 @@ pub async fn read_random_channel_line(
     }
 
     let offset = {
-        let mut rng = thread_rng();
+        let mut rng = rng();
         (0..total_count).choose(&mut rng).ok_or(Error::NotFound)
     }?;
 
@@ -383,10 +383,7 @@ pub async fn get_user_stats(
     })
 }
 
-pub async fn get_user_name_history(
-    db: &Client,
-    user_id: &str,
-) -> Result<Vec<PreviousName>> {
+pub async fn get_user_name_history(db: &Client, user_id: &str) -> Result<Vec<PreviousName>> {
     #[derive(Deserialize, Row)]
     struct SingleNameHistory {
         pub last_timestamp: i32,
@@ -419,7 +416,7 @@ pub async fn get_user_name_history(
     .await?;
 
     let mut seen_logins = HashSet::new();
-    
+
     let names = name_history_rows
         .into_iter()
         .filter_map(|(login, history)| {

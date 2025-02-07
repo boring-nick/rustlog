@@ -3,7 +3,7 @@ use super::{
     schema::{
         AvailableLogs, AvailableLogsParams, Channel, ChannelIdType, ChannelLogsByDatePath,
         ChannelLogsStats, ChannelParam, ChannelsList, LogsParams, LogsPathChannel, SearchParams,
-        UserLogPathParams, UserLogsPath, UserLogsStats, UserParam, UserNameHistoryParam
+        UserLogPathParams, UserLogsPath, UserLogsStats, UserNameHistoryParam, UserParam,
     },
 };
 use crate::{
@@ -25,7 +25,7 @@ use axum::{
 };
 use axum_extra::{headers::CacheControl, TypedHeader};
 use chrono::{DateTime, Days, Months, NaiveDate, NaiveTime, Utc};
-use rand::{distributions::Alphanumeric, thread_rng, Rng};
+use rand::{distr::Alphanumeric, rng, Rng};
 use std::time::Duration;
 use tracing::debug;
 
@@ -507,22 +507,19 @@ async fn search_user_logs(
     Ok(logs)
 }
 
-
 pub async fn get_user_name_history(
     app: State<App>,
-    Path(UserNameHistoryParam {
-        user_id,
-    }): Path<UserNameHistoryParam>,
+    Path(UserNameHistoryParam { user_id }): Path<UserNameHistoryParam>,
 ) -> Result<impl IntoApiResponse> {
     app.check_opted_out(&user_id, None)?;
 
-    let names = db::get_user_name_history(&app.db,&user_id).await?;
+    let names = db::get_user_name_history(&app.db, &user_id).await?;
 
     Ok(Json(names))
 }
 
 pub async fn optout(app: State<App>) -> Json<String> {
-    let mut rng = thread_rng();
+    let mut rng = rng();
     let optout_code: String = (0..5).map(|_| rng.sample(Alphanumeric) as char).collect();
 
     app.optout_codes.insert(optout_code.clone());

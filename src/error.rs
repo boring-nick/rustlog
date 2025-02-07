@@ -56,7 +56,7 @@ impl OperationOutput for Error {
     type Inner = Self;
 
     fn operation_response(
-        _: &mut aide::gen::GenContext,
+        _: &mut aide::generate::GenContext,
         _: &mut aide::openapi::Operation,
     ) -> Option<aide::openapi::Response> {
         Some(aide::openapi::Response {
@@ -69,7 +69,7 @@ impl OperationOutput for Error {
     }
 
     fn inferred_responses(
-        ctx: &mut aide::gen::GenContext,
+        ctx: &mut aide::generate::GenContext,
         operation: &mut aide::openapi::Operation,
     ) -> Vec<(Option<u16>, aide::openapi::Response)> {
         if let Some(res) = Self::operation_response(ctx, operation) {

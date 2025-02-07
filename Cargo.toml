@@ -4,9 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-aide = { version = "0.13.4", features = ["axum", "redoc"] }
+aide = { version = "0.14.0", features = [
+    "axum",
+    "axum-json",
+    "axum-query",
+    "redoc",
+] }
 anyhow = "1.0.75"
-axum = { version = "0.7.5", features = ["tokio"] }
+axum = { version = "0.8.1", features = ["tokio"] }
 chrono = { version = "0.4.27", features = ["serde"] }
 clap = { version = "4.4.1", features = ["derive"] }
 clickhouse = { version = "0.13.0", default-features = false, features = [
@@ -23,7 +28,7 @@ lazy_static = "1.4.0"
 mimalloc = { version = "0.1.38", default-features = false }
 mime_guess = "2.0.4"
 prometheus = "0.13.3"
-rand = "0.8.5"
+rand = "0.9.0"
 rayon = "1.7.0"
 reqwest = { version = "0.12.4", features = [
     "rustls-tls",
@@ -48,21 +53,17 @@ twitch-irc = { version = "5.0.1", default-features = false, features = [
     "metrics-collection",
     "transport-tcp-rustls-webpki-roots",
 ] }
-twitch_api = { git = "https://github.com/twitch-rs/twitch_api", features = [
+twitch_api = { version = "0.7.0", features = [
     "client",
     "helix",
     "reqwest",
     "twitch_oauth2",
 ] }
 tmi = { version = "0.7.0", default-features = false, features = ["simd"] }
-axum-prometheus = "0.7.0"
-metrics-prometheus = "0.7.0"
-axum-extra = { version = "0.9.3", features = ["typed-header"] }
+axum-prometheus = "0.8.0"
+metrics-prometheus = "0.8.0"
+axum-extra = { version = "0.10.0", features = ["typed-header"] }
 bitflags = { version = "2.5.0", features = ["serde"] }
-
-# https://github.com/twitch-rs/twitch_api/issues/256
-[patch.crates-io.twitch_types]
-git = "https://github.com/twitch-rs/twitch_api"
 
 [dev-dependencies]
 pretty_assertions = "1.4.0"
