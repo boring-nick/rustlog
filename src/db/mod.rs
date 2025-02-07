@@ -1,6 +1,7 @@
 mod migrations;
 pub mod schema;
 pub mod writer;
+use std::collections::HashSet;
 
 pub use migrations::run as setup_db;
 use serde::Deserialize;
@@ -12,7 +13,7 @@ use crate::{
         schema::LogRangeParams,
         stream::{FlushBufferResponse, LogsStream},
     },
-    web::schema::{AvailableLogDate, ChannelLogsStats, LogsParams, UserLogsStats},
+    web::schema::{AvailableLogDate, ChannelLogsStats, LogsParams, PreviousName, UserLogsStats},
     Result,
 };
 use chrono::{DateTime, Datelike, Duration, Utc};
@@ -20,6 +21,7 @@ use clickhouse::{query::RowCursor, Client, Row};
 use rand::{seq::IteratorRandom, thread_rng};
 use schema::StructuredMessage;
 use tracing::debug;
+use futures::future::try_join_all;
 
 const CHANNEL_MULTI_QUERY_SIZE_DAYS: i64 = 14;
 
@@ -379,6 +381,63 @@ pub async fn get_user_stats(
         message_count: count,
         user_id: user_id.to_owned(),
     })
+}
+
+pub async fn get_user_name_history(
+    db: &Client,
+    user_id: &str,
+) -> Result<Vec<PreviousName>> {
+    #[derive(Deserialize, Row)]
+    struct SingleNameHistory {
+        pub last_timestamp: i32,
+        pub first_timestamp: i32,
+    }
+
+    let name_query = "SELECT DISTINCT user_login FROM message_structured WHERE user_id = ? SETTINGS use_query_cache = 1, query_cache_ttl = 600".to_owned();
+    let name_query = db.query(&name_query).bind(user_id);
+    let distinct_logins = name_query.fetch_all::<String>().await?;
+    if distinct_logins.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let sanitized_user_logins = distinct_logins
+        .iter()
+        .map(|login| login.trim_start_matches(':').to_owned());
+
+    let history_query = "SELECT toDateTime(MAX(timestamp)) AS last_timestamp, toDateTime(MIN(timestamp)) AS first_timestamp FROM message_structured WHERE (user_id = ?) AND (user_login = ?) SETTINGS use_query_cache = 1, query_cache_ttl = 600".to_owned();
+
+    let name_history_rows = try_join_all(sanitized_user_logins.into_iter().map(|login| {
+        let query = history_query.clone();
+        async move {
+            let query = db.query(&query).bind(user_id).bind(&login);
+            query
+                .fetch_one::<SingleNameHistory>()
+                .await
+                .map(|history| (login, history))
+        }
+    }))
+    .await?;
+
+    let mut seen_logins = HashSet::new();
+    
+    let names = name_history_rows
+        .into_iter()
+        .filter_map(|(login, history)| {
+            if seen_logins.insert(login.clone()) {
+                Some(PreviousName {
+                    user_login: login,
+                    last_timestamp: DateTime::from_timestamp(history.last_timestamp.into(), 0)
+                        .expect("Invalid DateTime"),
+                    first_timestamp: DateTime::from_timestamp(history.first_timestamp.into(), 0)
+                        .expect("Invalid DateTime"),
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    Ok(names)
 }
 
 fn apply_limit_offset(query: &mut String, buffer_response: &FlushBufferResponse) {

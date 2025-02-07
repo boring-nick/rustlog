@@ -1,4 +1,5 @@
 use super::responders::logs::{JsonResponseType, LogsResponseType};
+use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt::Display;
@@ -175,4 +176,18 @@ pub struct ChannelLogsStats {
 pub struct UserLogsStats {
     pub user_id: String,
     pub message_count: u64,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct UserNameHistoryParam {
+    pub user_id: String,
+}
+
+#[derive(Serialize, JsonSchema)]
+pub struct PreviousName {
+    pub user_login: String,
+    #[schemars(with = "String")]
+    pub last_timestamp: DateTime<Utc>,
+    #[schemars(with = "String")]
+    pub first_timestamp: DateTime<Utc>,
 }
