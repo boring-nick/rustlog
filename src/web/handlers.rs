@@ -3,7 +3,8 @@ use super::{
     schema::{
         AvailableLogs, AvailableLogsParams, Channel, ChannelIdType, ChannelLogsByDatePath,
         ChannelLogsStats, ChannelParam, ChannelsList, LogsParams, LogsPathChannel, SearchParams,
-        UserLogPathParams, UserLogsPath, UserLogsStats, UserNameHistoryParam, UserParam,
+        UserIdType, UserLogPathParams, UserLogsDatePath, UserLogsStats, UserNameHistoryParam,
+        UserParam,
     },
 };
 use crate::{
@@ -95,41 +96,12 @@ pub async fn get_channel_stats(
     Ok(Json(stats))
 }
 
-pub async fn get_user_stats_by_name(
-    path: Path<UserLogPathParams>,
-    range_params: Query<LogRangeParams>,
-    app: State<App>,
-) -> Result<Json<UserLogsStats>> {
-    get_user_stats(path, false, range_params, app).await
-}
-
-pub async fn get_user_stats_by_id(
-    path: Path<UserLogPathParams>,
-    range_params: Query<LogRangeParams>,
-    app: State<App>,
-) -> Result<Json<UserLogsStats>> {
-    get_user_stats(path, true, range_params, app).await
-}
-
-async fn get_user_stats(
-    Path(UserLogPathParams {
-        channel_id_type,
-        channel,
-        user,
-    }): Path<UserLogPathParams>,
-    user_is_id: bool,
+pub async fn get_user_stats(
+    Path(user_params): Path<UserLogPathParams>,
     Query(range_params): Query<LogRangeParams>,
     app: State<App>,
 ) -> Result<Json<UserLogsStats>> {
-    let channel_id = match channel_id_type {
-        ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
-        ChannelIdType::Id => channel.clone(),
-    };
-    let user_id = if user_is_id {
-        user.clone()
-    } else {
-        app.get_user_id_by_name(&user).await?
-    };
+    let (channel_id, user_id) = resolve_user_params(&user_params, &app).await?;
 
     app.check_opted_out(&channel_id, Some(&user_id))?;
 
@@ -190,47 +162,14 @@ async fn get_channel_logs_inner(
     Ok((cache, logs))
 }
 
-pub async fn get_user_logs_by_name(
-    path: Path<UserLogPathParams>,
+pub async fn get_user_logs(
+    Path(user_params): Path<UserLogPathParams>,
     Query(range_params): Query<LogRangeParams>,
     Query(logs_params): Query<LogsParams>,
-    query: RawQuery,
-    app: State<App>,
-) -> Result<impl IntoApiResponse> {
-    get_user_logs(path, range_params, logs_params, query, false, app).await
-}
-
-pub async fn get_user_logs_id(
-    path: Path<UserLogPathParams>,
-    Query(range_params): Query<LogRangeParams>,
-    Query(logs_params): Query<LogsParams>,
-    query: RawQuery,
-    app: State<App>,
-) -> Result<impl IntoApiResponse> {
-    get_user_logs(path, range_params, logs_params, query, true, app).await
-}
-
-async fn get_user_logs(
-    Path(UserLogPathParams {
-        channel_id_type,
-        channel,
-        user,
-    }): Path<UserLogPathParams>,
-    range_params: LogRangeParams,
-    logs_params: LogsParams,
     RawQuery(query): RawQuery,
-    user_is_id: bool,
     app: State<App>,
 ) -> Result<impl IntoApiResponse> {
-    let channel_id = match channel_id_type {
-        ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
-        ChannelIdType::Id => channel.clone(),
-    };
-    let user_id = if user_is_id {
-        user.clone()
-    } else {
-        app.get_user_id_by_name(&user).await?
-    };
+    let (channel_id, user_id) = resolve_user_params(&user_params, &app).await?;
 
     app.check_opted_out(&channel_id, Some(&user_id))?;
 
@@ -241,7 +180,12 @@ async fn get_user_logs(
         let available_logs = read_available_user_logs(&app.db, &channel_id, &user_id).await?;
         let latest_log = available_logs.first().ok_or(Error::NotFound)?;
 
-        let user_id_type = if user_is_id { "userid" } else { "user" };
+        let UserLogPathParams {
+            channel_id_type,
+            channel,
+            user_id_type,
+            user,
+        } = user_params;
 
         let mut new_uri =
             format!("/{channel_id_type}/{channel}/{user_id_type}/{user}/{latest_log}");
@@ -253,43 +197,18 @@ async fn get_user_logs(
     }
 }
 
-pub async fn get_user_logs_by_date_name(
+pub async fn get_user_logs_by_date(
     app: State<App>,
-    path: Path<UserLogsPath>,
-    params: Query<LogsParams>,
-) -> Result<impl IntoApiResponse> {
-    let user_id = app.get_user_id_by_name(&path.user).await?;
-
-    get_user_logs_by_date(app, path, params, user_id).await
-}
-
-pub async fn get_user_logs_by_date_id(
-    app: State<App>,
-    path: Path<UserLogsPath>,
-    params: Query<LogsParams>,
-) -> Result<impl IntoApiResponse> {
-    let user_id = path.user.clone();
-    get_user_logs_by_date(app, path, params, user_id).await
-}
-
-async fn get_user_logs_by_date(
-    app: State<App>,
-    Path(user_logs_path): Path<UserLogsPath>,
+    Path(user_params): Path<UserLogPathParams>,
+    Path(user_logs_date): Path<UserLogsDatePath>,
     Query(logs_params): Query<LogsParams>,
-    user_id: String,
 ) -> Result<impl IntoApiResponse> {
-    let channel_id = match user_logs_path.channel_info.channel_id_type {
-        ChannelIdType::Name => {
-            app.get_user_id_by_name(&user_logs_path.channel_info.channel)
-                .await?
-        }
-        ChannelIdType::Id => user_logs_path.channel_info.channel.clone(),
-    };
+    let (channel_id, user_id) = resolve_user_params(&user_params, &app).await?;
 
     app.check_opted_out(&channel_id, Some(&user_id))?;
 
-    let year = user_logs_path.year.parse()?;
-    let month = user_logs_path.month.parse()?;
+    let year = user_logs_date.year.parse()?;
+    let month = user_logs_date.month.parse()?;
 
     let from = NaiveDate::from_ymd_opt(year, month, 1)
         .ok_or_else(|| Error::InvalidParam("Invalid date".to_owned()))?
@@ -384,42 +303,12 @@ pub async fn random_channel_line(
     Ok((no_cache_header(), logs))
 }
 
-pub async fn random_user_line_by_name(
+pub async fn random_user_line(
     app: State<App>,
-    Path(UserLogPathParams {
-        channel_id_type,
-        channel,
-        user,
-    }): Path<UserLogPathParams>,
-    query: Query<LogsParams>,
-) -> Result<impl IntoApiResponse> {
-    let user_id = app.get_user_id_by_name(&user).await?;
-    random_user_line(app, channel_id_type, channel, user_id, query).await
-}
-
-pub async fn random_user_line_by_id(
-    app: State<App>,
-    Path(UserLogPathParams {
-        channel_id_type,
-        channel,
-        user,
-    }): Path<UserLogPathParams>,
-    query: Query<LogsParams>,
-) -> Result<impl IntoApiResponse> {
-    random_user_line(app, channel_id_type, channel, user, query).await
-}
-
-async fn random_user_line(
-    app: State<App>,
-    channel_id_type: ChannelIdType,
-    channel: String,
-    user_id: String,
+    Path(user_params): Path<UserLogPathParams>,
     Query(logs_params): Query<LogsParams>,
 ) -> Result<impl IntoApiResponse> {
-    let channel_id = match channel_id_type {
-        ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
-        ChannelIdType::Id => channel,
-    };
+    let (channel_id, user_id) = resolve_user_params(&user_params, &app).await?;
 
     app.check_opted_out(&channel_id, Some(&user_id))?;
 
@@ -433,61 +322,13 @@ async fn random_user_line(
     Ok((no_cache_header(), logs))
 }
 
-pub async fn search_user_logs_by_name(
+pub async fn search_user_logs(
     app: State<App>,
-    Path(UserLogPathParams {
-        channel_id_type,
-        channel,
-        user,
-    }): Path<UserLogPathParams>,
+    Path(user_params): Path<UserLogPathParams>,
     Query(search_params): Query<SearchParams>,
     Query(logs_params): Query<LogsParams>,
 ) -> Result<impl IntoApiResponse> {
-    let user_id = app.get_user_id_by_name(&user).await?;
-    search_user_logs(
-        app,
-        channel_id_type,
-        channel,
-        user_id,
-        search_params,
-        logs_params,
-    )
-    .await
-}
-
-pub async fn search_user_logs_by_id(
-    app: State<App>,
-    Path(UserLogPathParams {
-        channel_id_type,
-        channel,
-        user,
-    }): Path<UserLogPathParams>,
-    Query(search_params): Query<SearchParams>,
-    Query(logs_params): Query<LogsParams>,
-) -> Result<impl IntoApiResponse> {
-    search_user_logs(
-        app,
-        channel_id_type,
-        channel,
-        user,
-        search_params,
-        logs_params,
-    )
-    .await
-}
-
-async fn search_user_logs(
-    app: State<App>,
-    channel_id_type: ChannelIdType,
-    channel: String,
-    user_id: String,
-    search_params: SearchParams,
-    logs_params: LogsParams,
-) -> Result<impl IntoApiResponse> {
-    let channel_id = match channel_id_type {
-        ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
-        ChannelIdType::Id => channel,
-    };
+    let (channel_id, user_id) = resolve_user_params(&user_params, &app).await?;
 
     app.check_opted_out(&channel_id, Some(&user_id))?;
 
@@ -548,4 +389,16 @@ fn cache_header(secs: u64) -> TypedHeader<CacheControl> {
 
 pub fn no_cache_header() -> TypedHeader<CacheControl> {
     TypedHeader(CacheControl::new().with_no_cache())
+}
+
+async fn resolve_user_params(params: &UserLogPathParams, app: &App) -> Result<(String, String)> {
+    let channel_id = match params.channel_id_type {
+        ChannelIdType::Name => app.get_user_id_by_name(&params.channel).await?,
+        ChannelIdType::Id => params.channel.clone(),
+    };
+    let user_id = match params.user_id_type {
+        UserIdType::Name => app.get_user_id_by_name(&params.user).await?,
+        UserIdType::Id => params.user.clone(),
+    };
+    Ok((channel_id, user_id))
 }

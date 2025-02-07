@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
 use std::fmt::Display;
+use strum::Display;
 
 #[derive(Serialize, JsonSchema)]
 pub struct ChannelsList {
@@ -16,29 +17,28 @@ pub struct Channel {
     pub user_id: String,
 }
 
-#[derive(Debug, Deserialize, JsonSchema)]
+#[derive(Debug, Deserialize, JsonSchema, Display)]
 pub enum ChannelIdType {
     #[serde(rename = "channel")]
+    #[strum(serialize = "channel")]
     Name,
     #[serde(rename = "channelid")]
+    #[strum(serialize = "channelid")]
     Id,
 }
 
-impl Display for ChannelIdType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let s = match self {
-            ChannelIdType::Name => "channel",
-            ChannelIdType::Id => "channelid",
-        };
-        f.write_str(s)
-    }
+#[derive(Debug, Deserialize, JsonSchema, Display)]
+pub enum UserIdType {
+    #[serde(rename = "user")]
+    #[strum(serialize = "user")]
+    Name,
+    #[serde(rename = "userid")]
+    #[strum(serialize = "userid")]
+    Id,
 }
 
 #[derive(Deserialize, JsonSchema)]
-pub struct UserLogsPath {
-    #[serde(flatten)]
-    pub channel_info: LogsPathChannel,
-    pub user: String,
+pub struct UserLogsDatePath {
     pub year: String,
     pub month: String,
 }
@@ -161,6 +161,7 @@ pub enum ChannelParam {
 pub struct UserLogPathParams {
     pub channel_id_type: ChannelIdType,
     pub channel: String,
+    pub user_id_type: UserIdType,
     pub user: String,
 }
 
