@@ -1,10 +1,12 @@
 mod migratable;
 mod structured;
+mod username_history;
 
 use crate::Result;
 use clickhouse::Client;
 use structured::StructuredMigration;
 use tracing::{debug, info};
+use username_history::UsernameHistoryMigration;
 
 use self::migratable::Migratable;
 
@@ -70,6 +72,8 @@ String CODEC(ZSTD(10))
     .await?;
 
     run_migration(db, "6_structured_message", StructuredMigration { db_name }).await?;
+
+    run_migration(db, "7_username_history", UsernameHistoryMigration).await?;
 
     Ok(())
 }
