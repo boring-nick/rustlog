@@ -35,7 +35,7 @@ use tower_http::{
 };
 use tracing::{debug, info};
 
-const CAPABILITIES: &[&str] = &["arbitrary-range-query", "search", "stats"];
+const CAPABILITIES: &[&str] = &["arbitrary-range-query", "search", "stats", "namehistory"];
 
 pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessage>) {
     aide::generate::on_error(|error| {
@@ -83,12 +83,12 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
             }),
         )
         // Paths with static parts should go first so they aren't overridden by the dynamic date paths later
-        // .api_route(
-        //     "/namehistory/{user_id}",
-        //     get_with(handlers::get_user_name_history, |op| {
-        //         op.description("Get user name history by provided user id")
-        //     }),
-        // )
+        .api_route(
+            "/namehistory/{user_id}",
+            get_with(handlers::get_user_name_history, |op| {
+                op.description("Get user name history by provided user id")
+            }),
+        )
         .api_route(
             "/{channel_id_type}/{channel}/{user_id_type}/{user}/search",
             get_with(handlers::search_user_logs, |op| {
