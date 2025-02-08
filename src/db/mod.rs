@@ -391,7 +391,7 @@ pub async fn get_user_name_history(db: &Client, user_id: &str) -> Result<Vec<Pre
     }
 
     let query = "
-        SELECT user_login,
+        SELECT trim(LEADING ':' FROM user_login) as user_login,
         max(last_timestamp) AS last_timestamp,
         min(first_timestamp) AS first_timestamp
         FROM username_history

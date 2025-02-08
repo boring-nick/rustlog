@@ -1,6 +1,6 @@
 use super::migratable::Migratable;
 use anyhow::Context;
-use tracing::info;
+use tracing::{info, warn};
 
 pub struct UsernameHistoryMigration;
 
@@ -69,6 +69,10 @@ impl<'a> Migratable<'a> for UsernameHistoryMigration {
         )
         .execute()
         .await?;
+
+        if let Err(err) = db.query("OPTIMIZE TABLE username_history").execute().await {
+            warn!("Could not run OPTIMIZE query on table: {err}");
+        }
 
         info!("Username history built");
 
