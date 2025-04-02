@@ -21,7 +21,7 @@ services:
     environment:
       CLICKHOUSE_DB: "rustlog"
       CLICKHOUSE_USER: "user"
-      CLICKHOUSE_PASSWORD: "SuperSecretKey"
+      CLICKHOUSE_PASSWORD: "SuperSecretPassword"
     restart: unless-stopped
         
   rustlog:

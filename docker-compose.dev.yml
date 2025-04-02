@@ -8,7 +8,7 @@ services:
     environment:
       CLICKHOUSE_DB: "rustlog"
       CLICKHOUSE_USER: "user"
-      CLICKHOUSE_PASSWORD: "SuperSecretKey"
+      CLICKHOUSE_PASSWORD: "SuperSecretPassword"
     ports:
       - 8123:8123
       - 9000:9000

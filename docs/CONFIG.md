@@ -22,7 +22,7 @@ Example config:
   "clickhouseUrl": "http://clickhouse:8123",
   "clickhouseDb": "rustlog",
   "clickhouseUsername": user,
-  "clickhousePassword": SuperSecretKey,
+  "clickhousePassword": SuperSecretPassword,
   "listenAddress": "0.0.0.0:8025",
   "channels": ["12345"],
   "clientID": "id",
