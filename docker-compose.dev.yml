@@ -7,6 +7,8 @@ services:
       - "rustlog_ch_data:/var/lib/clickhouse:rw"
     environment:
       CLICKHOUSE_DB: "rustlog"
+      CLICKHOUSE_USER: "user"
+      CLICKHOUSE_PASSWORD: "SuperSecretKey"
     ports:
       - 8123:8123
       - 9000:9000
