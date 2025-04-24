@@ -258,7 +258,11 @@ impl<'a> StructuredMessage<'a> {
                 {
                     if !self.text.is_empty() {
                         let user_message = extract_message_text(&self.text);
-                        Cow::Owned(format!("{system_message} {user_message}"))
+                        if !system_message.is_empty() {
+                            Cow::Owned(format!("{system_message} {user_message}"))
+                        } else {
+                            Cow::Borrowed(user_message)
+                        }
                     } else {
                         Cow::Borrowed(system_message)
                     }
