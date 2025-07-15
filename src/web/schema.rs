@@ -188,8 +188,6 @@ pub struct UserNameHistoryParam {
 #[derive(Serialize, JsonSchema)]
 pub struct PreviousName {
     pub user_login: String,
-    #[schemars(with = "String")]
     pub last_timestamp: DateTime<Utc>,
-    #[schemars(with = "String")]
     pub first_timestamp: DateTime<Utc>,
 }
