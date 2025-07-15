@@ -13,7 +13,7 @@ use crate::{
         schema::LogRangeParams,
         stream::{FlushBufferResponse, LogsStream},
     },
-    web::schema::{AvailableLogDate, ChannelLogsStats, LogsParams, PreviousName, UserLogsStats},
+    web::schema::{AvailableLogDate, LogsParams, PreviousName, UserLogsStats},
     Result,
 };
 use chrono::{DateTime, Datelike, Duration, Utc};
@@ -294,17 +294,17 @@ pub async fn search_user_logs(
     LogsStream::new_cursor(cursor, buffer_response).await
 }
 
+#[derive(Deserialize, Row)]
+pub struct StatsRow {
+    pub cnt: u64,
+    pub user_id: String,
+}
+
 pub async fn get_channel_stats(
     db: &Client,
     channel_id: &str,
     range_params: LogRangeParams,
-) -> Result<ChannelLogsStats> {
-    #[derive(Deserialize, Row)]
-    struct StatsRow {
-        pub cnt: u64,
-        pub user_id: String,
-    }
-
+) -> Result<(u64, Vec<StatsRow>)> {
     let mut query = "SELECT count(*) FROM message_structured WHERE channel_id = ?".to_owned();
 
     if range_params.range().is_some() {
@@ -339,24 +339,15 @@ pub async fn get_channel_stats(
     }
 
     let stats_rows = query.fetch_all::<StatsRow>().await?;
-    let top_chatters = stats_rows
-        .into_iter()
-        .map(|row| UserLogsStats {
-            user_id: row.user_id,
-            message_count: row.cnt,
-        })
-        .collect();
 
-    Ok(ChannelLogsStats {
-        message_count: total_count,
-        top_chatters,
-    })
+    Ok((total_count, stats_rows))
 }
 
 pub async fn get_user_stats(
     db: &Client,
     channel_id: &str,
-    user_id: &str,
+    user_id: String,
+    user_login: Option<String>,
     range_params: LogRangeParams,
 ) -> Result<UserLogsStats> {
     let mut query =
@@ -366,7 +357,7 @@ pub async fn get_user_stats(
         query.push_str(" AND timestamp >= ? AND timestamp < ?");
     }
 
-    let mut query = db.query(&query).bind(channel_id).bind(user_id);
+    let mut query = db.query(&query).bind(channel_id).bind(&user_id);
 
     if let Some((from, to)) = range_params.range() {
         query = query
@@ -378,7 +369,8 @@ pub async fn get_user_stats(
 
     Ok(UserLogsStats {
         message_count: count,
-        user_id: user_id.to_owned(),
+        user_login,
+        user_id,
     })
 }
 

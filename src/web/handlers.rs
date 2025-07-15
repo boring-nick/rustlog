@@ -91,9 +91,25 @@ pub async fn get_channel_stats(
         ChannelIdType::Name => app.get_user_id_by_name(&channel).await?,
         ChannelIdType::Id => channel.clone(),
     };
-    let stats = db::get_channel_stats(&app.db, &channel_id, range_params).await?;
+    let (message_count, stats_rows) =
+        db::get_channel_stats(&app.db, &channel_id, range_params).await?;
 
-    Ok(Json(stats))
+    let user_ids = stats_rows.iter().map(|row| row.user_id.clone()).collect();
+    let mut users = app.get_users(user_ids, vec![], false).await?;
+
+    let top_chatters = stats_rows
+        .into_iter()
+        .map(|row| UserLogsStats {
+            user_login: users.remove(&row.user_id),
+            user_id: row.user_id,
+            message_count: row.cnt,
+        })
+        .collect();
+
+    Ok(Json(ChannelLogsStats {
+        message_count,
+        top_chatters,
+    }))
 }
 
 pub async fn get_user_stats(
@@ -105,7 +121,12 @@ pub async fn get_user_stats(
 
     app.check_opted_out(&channel_id, Some(&user_id))?;
 
-    let stats = db::get_user_stats(&app.db, &channel_id, &user_id, range_params).await?;
+    let user_login = app
+        .get_users(vec![user_id.clone()], vec![], false)
+        .await?
+        .into_values()
+        .next();
+    let stats = db::get_user_stats(&app.db, &channel_id, user_id, user_login, range_params).await?;
 
     Ok(Json(stats))
 }

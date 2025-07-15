@@ -176,6 +176,7 @@ pub struct ChannelLogsStats {
 #[serde(rename_all = "camelCase")]
 pub struct UserLogsStats {
     pub user_id: String,
+    pub user_login: Option<String>,
     pub message_count: u64,
 }
 
