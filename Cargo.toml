@@ -4,14 +4,14 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-aide = { version = "0.14.0", features = [
+aide = { version = "0.15.0", features = [
     "axum",
     "axum-json",
     "axum-query",
-    "redoc",
+    "scalar",
 ] }
 anyhow = "1.0.75"
-axum = { version = "0.8.1", features = ["tokio"] }
+axum = { version = "0.8.4", features = ["tokio"] }
 chrono = { version = "0.4.27", features = ["serde"] }
 clap = { version = "4.4.1", features = ["derive"] }
 clickhouse = { version = "0.13.0", default-features = false, features = [
@@ -34,7 +34,7 @@ reqwest = { version = "0.12.4", features = [
     "rustls-tls",
 ], default-features = false }
 rust-embed = { version = "8.0.0", features = ["interpolate-folder-path"] }
-schemars = "0.8.13"
+schemars = "0.9"
 serde = { version = "1.0.188", features = ["derive"] }
 serde_json = { version = "1.0.105", features = ["preserve_order"] }
 serde_repr = "0.1.16"
