@@ -98,7 +98,7 @@ impl OperationOutput for LogsResponse {
     type Inner = Self;
 
     fn operation_response(
-        ctx: &mut aide::gen::GenContext,
+        ctx: &mut aide::generate::GenContext,
         operation: &mut aide::openapi::Operation,
     ) -> Option<aide::openapi::Response> {
         let mut content = IndexMap::with_capacity(2);
@@ -118,7 +118,7 @@ impl OperationOutput for LogsResponse {
     }
 
     fn inferred_responses(
-        ctx: &mut aide::gen::GenContext,
+        ctx: &mut aide::generate::GenContext,
         operation: &mut aide::openapi::Operation,
     ) -> Vec<(Option<u16>, aide::openapi::Response)> {
         let res = Self::operation_response(ctx, operation).unwrap();

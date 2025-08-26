@@ -23,16 +23,8 @@ impl MultiQueryStream {
         cursors: Vec<RowCursor<StructuredMessage<'static>>>,
         buffer_response: FlushBufferResponse,
     ) -> Self {
-        let limit = buffer_response
-            .params
-            .logs_params
-            .limit
-            .map(|value| value as usize);
-        let offset = buffer_response
-            .params
-            .logs_params
-            .offset
-            .map(|value| value as usize);
+        let limit = buffer_response.params.limit.map(|value| value as usize);
+        let offset = buffer_response.params.offset.map(|value| value as usize);
 
         Self {
             cursors,

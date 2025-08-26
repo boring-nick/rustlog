@@ -20,6 +20,8 @@ services:
       - "./ch-data:/var/lib/clickhouse:rw"
     environment:
       CLICKHOUSE_DB: "rustlog"
+      CLICKHOUSE_USER: "user"
+      CLICKHOUSE_PASSWORD: "SuperSecretPassword"
     restart: unless-stopped
         
   rustlog:

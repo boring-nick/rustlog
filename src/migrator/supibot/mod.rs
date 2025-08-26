@@ -59,7 +59,7 @@ pub async fn run(
                     Some(Duration::from_secs(30)),
                     Some(Duration::from_secs(180)),
                 )
-                .with_max_entries(INSERT_BATCH_SIZE)
+                .with_max_rows(INSERT_BATCH_SIZE)
                 .with_period(Some(Duration::from_secs(15)));
 
             let existing_dates = get_existing_dates(&db, &channel_id).await?;
@@ -196,10 +196,10 @@ impl SupibotMigrator {
                 .commit()
                 .await
                 .context("Could not flush messages")?;
-            if stats.entries > 0 {
+            if stats.rows > 0 {
                 info!(
                     "DB: {} entries ({} transactions) have been inserted",
-                    stats.entries, stats.transactions,
+                    stats.rows, stats.transactions,
                 );
             }
         }
@@ -210,10 +210,10 @@ impl SupibotMigrator {
             .end()
             .await
             .context("Could not flush messages")?;
-        if stats.entries > 0 {
+        if stats.rows > 0 {
             info!(
                 "DB: {} entries ({} transactions) have been inserted",
-                stats.entries, stats.transactions,
+                stats.rows, stats.transactions,
             );
         }
 
@@ -283,7 +283,7 @@ impl SupibotMigrator {
             extra_tags: vec![],
         };
 
-        self.inserter.write(&message).await?;
+        self.inserter.write(&message)?;
         self.imported_count += 1;
 
         Ok(())

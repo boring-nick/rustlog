@@ -13,7 +13,7 @@ use aide::{
         ApiRouter, IntoApiResponse,
     },
     openapi::OpenApi,
-    redoc::Redoc,
+    scalar::Scalar,
 };
 use axum::{
     extract::Request,
@@ -35,14 +35,14 @@ use tower_http::{
 };
 use tracing::{debug, info};
 
-const CAPABILITIES: &[&str] = &["arbitrary-range-query"];
+const CAPABILITIES: &[&str] = &["arbitrary-range-query", "search", "stats", "namehistory"];
 
 pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessage>) {
-    aide::gen::on_error(|error| {
+    aide::generate::on_error(|error| {
         panic!("Could not generate docs: {error}");
     });
-    aide::gen::infer_responses(true);
-    aide::gen::extract_schemas(true);
+    aide::generate::infer_responses(true);
+    aide::generate::extract_schemas(true);
 
     metrics_prometheus::install();
 
@@ -82,78 +82,72 @@ pub async fn run(app: App, mut shutdown_rx: ShutdownRx, bot_tx: Sender<BotMessag
                 op.description("List available logs")
             }),
         )
+        // Paths with static parts should go first so they aren't overridden by the dynamic date paths later
         .api_route(
-            "/:channel_id_type/:channel",
-            get_with(handlers::get_channel_logs, |op| {
-                op.description("Get channel logs. If the `to` and `from` query params are not given, redirect to latest available day")
-            }),
-        )
-        // For some reason axum considers it a path overlap if user id type is dynamic
-        .api_route(
-            "/:channel_id_type/:channel/user/:user",
-            get_with(handlers::get_user_logs_by_name, |op| {
-                op.description("Get user logs by name. If the `to` and `from` query params are not given, redirect to latest available month")
+            "/namehistory/{user_id}",
+            get_with(handlers::get_user_name_history, |op| {
+                op.description("Get user name history by provided user id")
             }),
         )
         .api_route(
-            "/:channel_id_type/:channel/userid/:user",
-            get_with(handlers::get_user_logs_id, |op| {
-                op.description("Get user logs by id. If the `to` and `from` query params are not given, redirect to latest available month")
+            "/{channel_id_type}/{channel}/{user_id_type}/{user}/search",
+            get_with(handlers::search_user_logs, |op| {
+                op.description("Search user logs using the provided query")
             }),
         )
         .api_route(
-            "/:channel_id_type/:channel/:year/:month/:day",
-            get_with(handlers::get_channel_logs_by_date, |op| {
-                op.description("Get channel logs from the given day")
+            "/{channel_id_type}/{channel}/{user_id_type}/{user}/stats",
+            get_with(handlers::get_user_stats, |op| {
+                op.description("Get user stats")
             }),
         )
         .api_route(
-            "/:channel_id_type/:channel/user/:user/:year/:month",
-            get_with(handlers::get_user_logs_by_date_name, |op| {
-                op.description("Get user logs in a channel from the given month")
+            "/{channel_id_type}/{channel}/stats",
+            get_with(handlers::get_channel_stats, |op| {
+                op.description("Get channel stats")
             }),
         )
         .api_route(
-            "/:channel_id_type/:channel/userid/:user/:year/:month",
-            get_with(handlers::get_user_logs_by_date_id, |op| {
-                op.description("Get user logs in a channel from the given month")
-            }),
-        )
-        .api_route(
-            "/:channel_id_type/:channel/random",
+            "/{channel_id_type}/{channel}/random",
             get_with(handlers::random_channel_line, |op| {
                 op.description("Get a random line from the channel's logs")
             }),
         )
         .api_route(
-            "/:channel_id_type/:channel/userid/:user/random",
-            get_with(handlers::random_user_line_by_id, |op| {
+            "/{channel_id_type}/{channel}/{user_id_type}/{user}/random",
+            get_with(handlers::random_user_line, |op| {
                 op.description("Get a random line from the user's logs in a channel")
             }),
         )
         .api_route(
-            "/:channel_id_type/:channel/user/:user/random",
-            get_with(handlers::random_user_line_by_name, |op| {
-                op.description("Get a random line from the user's logs in a channel")
+            "/{channel_id_type}/{channel}",
+            get_with(handlers::get_channel_logs, |op| {
+                op.description("Get channel logs. If the `to` and `from` query params are not given, redirect to latest available day")
             }),
         )
         .api_route(
-            "/:channel_id_type/:channel/user/:user/search",
-            get_with(handlers::search_user_logs_by_name, |op| {
-                op.description("Search user logs using the provided query")
+            "/{channel_id_type}/{channel}/{user_id_type}/{user}",
+            get_with(handlers::get_user_logs, |op| {
+                op.description("Get user logs by name. If the `to` and `from` query params are not given, redirect to latest available month")
             }),
         )
         .api_route(
-            "/:channel_id_type/:channel/userid/:user/search",
-            get_with(handlers::search_user_logs_by_id, |op| {
-                op.description("Search user logs using the provided query")
+            "/{channel_id_type}/{channel}/{year}/{month}/{day}",
+            get_with(handlers::get_channel_logs_by_date, |op| {
+                op.description("Get channel logs from the given day")
+            }),
+        )
+        .api_route(
+            "/{channel_id_type}/{channel}/{user_id_type}/{user}/{year}/{month}",
+            get_with(handlers::get_user_logs_by_date, |op| {
+                op.description("Get user logs in a channel from the given month")
             }),
         )
         .api_route("/optout", post(handlers::optout))
         .api_route("/capabilities", get(capabilities))
-        .route("/docs", Redoc::new("/openapi.json").axum_route())
+        .route("/docs", Scalar::new("/openapi.json").axum_route())
         .route("/openapi.json", get(serve_openapi))
-        .route("/assets/*asset", get(frontend::static_asset))
+        .route("/assets/{*asset}", get(frontend::static_asset))
         .fallback(frontend::static_asset)
         .layer(middleware::from_fn(capabilities_header_middleware))
         .layer(

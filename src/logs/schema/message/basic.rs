@@ -13,7 +13,6 @@ use super::ResponseMessage;
 pub struct BasicMessage<'a> {
     pub text: Cow<'a, str>,
     pub display_name: &'a str,
-    #[schemars(with = "String")]
     pub timestamp: DateTime<Utc>,
     pub id: Cow<'a, str>,
     pub tags: HashMap<&'a str, Cow<'a, str>>,

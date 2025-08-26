@@ -29,11 +29,7 @@ impl CursorStream {
             None
         };
         let count = first_item.is_some() as usize;
-        let limit = buffer_response
-            .params
-            .logs_params
-            .limit
-            .map(|value| value as usize);
+        let limit = buffer_response.params.limit.map(|value| value as usize);
 
         Ok(Self {
             cursor,

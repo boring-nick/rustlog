@@ -37,7 +37,7 @@ pub async fn admin_auth(
 }
 
 pub fn admin_auth_doc(op: &mut TransformOperation) {
-    let schema = aide::gen::in_context(|ctx| ctx.schema.subschema_for::<String>());
+    let schema = aide::generate::in_context(|ctx| ctx.schema.subschema_for::<String>());
 
     op.inner_mut()
         .parameters
