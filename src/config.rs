@@ -5,8 +5,6 @@ use std::fs;
 use std::{collections::HashSet, sync::RwLock};
 use tracing::info;
 
-const CONFIG_FILE_NAME: &str = "config.json";
-
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Config {
@@ -27,19 +25,23 @@ pub struct Config {
     pub opt_out: DashMap<String, bool>,
     #[serde(rename = "adminAPIKey")]
     pub admin_api_key: Option<String>,
+    #[serde(skip)]
+    config_path: Option<std::path::PathBuf>,
 }
 
 impl Config {
-    pub fn load() -> anyhow::Result<Self> {
-        let contents = fs::read_to_string(CONFIG_FILE_NAME)
-            .with_context(|| format!("Failed to load config from {CONFIG_FILE_NAME}"))?;
-        serde_json::from_str(&contents).context("Config deserializtion error")
+    pub fn load(config_path: &std::path::Path) -> anyhow::Result<Self> {
+        let contents = fs::read_to_string(config_path)
+            .with_context(|| format!("Failed to load config from {}", config_path.display()))?;
+        let mut s: Self = serde_json::from_str(&contents).context("Config deserializtion error")?;
+        s.config_path = Some(config_path.to_owned());
+        Ok(s)
     }
 
     pub fn save(&self) -> anyhow::Result<()> {
         info!("Updating config");
         let json = serde_json::to_string_pretty(self)?;
-        fs::write(CONFIG_FILE_NAME, json)?;
+        fs::write(self.config_path.as_ref().expect("config path should always be available"), json)?;
 
         Ok(())
     }

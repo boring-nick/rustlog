@@ -3,6 +3,9 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
+    /// Path to the config file
+    #[clap(default_value = "config.json", long = "config")]
+    pub config_path: std::path::PathBuf,
     #[clap(subcommand)]
     pub subcommand: Option<Command>,
 }
