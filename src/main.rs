@@ -58,7 +58,9 @@ async fn main() -> anyhow::Result<()> {
         .with_ansi(use_ansi)
         .init();
 
-    let config = Config::load()?;
+    let args = Args::parse();
+
+    let config = Config::load(&args.config_path)?;
     let mut db = clickhouse::Client::default()
         .with_url(&config.clickhouse_url)
         .with_database(&config.clickhouse_db)
@@ -71,8 +73,6 @@ async fn main() -> anyhow::Result<()> {
     if let Some(password) = &config.clickhouse_password {
         db = db.with_password(password);
     }
-
-    let args = Args::parse();
 
     setup_db(&db, &config.clickhouse_db)
         .await
