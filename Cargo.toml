@@ -12,6 +12,7 @@ aide = { version = "0.15.0", features = [
 ] }
 anyhow = "1.0.75"
 axum = { version = "0.8.4", features = ["tokio"] }
+blake3 = "1.8.2"
 chrono = { version = "0.4.27", features = ["serde"] }
 clap = { version = "4.4.1", features = ["derive"] }
 clickhouse = { version = "0.13.0", default-features = false, features = [
@@ -31,8 +32,10 @@ prometheus = "0.13.3"
 rand = "0.9.0"
 rayon = "1.7.0"
 reqwest = { version = "0.12.4", features = [
+    "json",
     "rustls-tls",
 ], default-features = false }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 rust-embed = { version = "8.0.0", features = ["interpolate-folder-path"] }
 schemars = { version = "0.9", features = ["chrono04"] }
 serde = { version = "1.0.188", features = ["derive"] }
@@ -62,6 +65,7 @@ twitch_api = { version = "0.7.0", features = [
 tmi = { version = "0.7.0", default-features = false, features = ["simd"] }
 axum-prometheus = "0.8.0"
 metrics-prometheus = "0.8.0"
+moka = { version = "0.12.14", features = ["sync"] }
 axum-extra = { version = "0.10.0", features = ["typed-header"] }
 bitflags = { version = "2.5.0", features = ["serde"] }
 
