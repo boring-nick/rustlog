@@ -5,12 +5,28 @@ pub trait MessageWithTags {
     fn get_tag(&self, key: Tag) -> Option<&str>;
 }
 
+trait TagValue {
+    fn as_optional_str(&self) -> Option<&str>;
+}
+
+impl TagValue for String {
+    fn as_optional_str(&self) -> Option<&str> {
+        Some(self)
+    }
+}
+
+impl TagValue for Option<String> {
+    fn as_optional_str(&self) -> Option<&str> {
+        self.as_deref()
+    }
+}
+
 impl MessageWithTags for IRCMessage {
     fn get_tag(&self, key: Tag) -> Option<&str> {
         self.tags
             .0
             .get(key.as_str())
-            .and_then(|value| value.as_deref())
+            .and_then(TagValue::as_optional_str)
     }
 }
 

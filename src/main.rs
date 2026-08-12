@@ -6,6 +6,7 @@ mod db;
 mod error;
 mod logs;
 mod migrator;
+mod recent_messages;
 mod web;
 
 pub type Result<T> = std::result::Result<T, error::Error>;
@@ -45,8 +46,14 @@ const SHUTDOWN_TIMEOUT_SECONDS: u64 = 8;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
+fn install_rustls_crypto_provider() {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    install_rustls_crypto_provider();
+
     let use_ansi = env::var("RUST_LOG_ANSI")
         .ok()
         .and_then(|ansi| ansi.parse().ok())
